@@ -149,8 +149,16 @@ function toISODate(s){
   /* already ISO */
   let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if(m) return m[1]+'-'+m[2]+'-'+m[3];
-  /* dd/mm/yyyy or d/m/yy etc */
-  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  /* Google Sheets gviz CSV export always renders dates as M/D/YYYY (US order),
+     regardless of the sheet's locale — confirmed against live export data. */
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if(m){
+    let [,_mo,_d,_y]=m;
+    if(_y.length===2) _y='20'+_y;
+    return _y+'-'+_mo.padStart(2,'0')+'-'+_d.padStart(2,'0');
+  }
+  /* dd-mm-yyyy (dash-separated, e.g. manual entry) */
+  m=s.match(/^(\d{1,2})-(\d{1,2})-(\d{2,4})/);
   if(m){
     let [,_d,_mo,_y]=m;
     if(_y.length===2) _y='20'+_y;
@@ -225,24 +233,52 @@ function SyncPanel({onSync, syncing, error, lastSynced}){
   );
 }
 
-/* ── Filter bar (brand / model / lead type) ──────────────────────── */
+/* ── Multi-select dropdown (checkbox popover) ────────────────────── */
+function MultiSelect({label, options, selected, onChange}){
+  const [open,setOpen]=useState(false);
+  const ref=useRef(null);
+  useEffect(function(){
+    function onDoc(e){ if(ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener('mousedown',onDoc);
+    return ()=>document.removeEventListener('mousedown',onDoc);
+  },[]);
+  function toggle(o){
+    onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o]);
+  }
+  const text = selected.length===0?('All '+label):(selected.length===1?selected[0]:selected.length+' '+label+' selected');
+  return ce('div',{ref, style:{position:'relative'}},
+    ce('button',{type:'button',className:'btn',style:{borderRadius:20,minWidth:120,textAlign:'left'},onClick:()=>setOpen(!open)}, text+' ▾'),
+    open?ce('div',{style:{position:'absolute',top:'110%',left:0,zIndex:10,background:'#fff',
+      border:'1px solid var(--blue-200)',borderRadius:10,boxShadow:'var(--shadow-card)',
+      padding:8,minWidth:200,maxHeight:240,overflowY:'auto'}},
+      options.length===0?ce('div',{className:'muted',style:{padding:'4px 6px'}},'No options'):null,
+      options.map(o=>ce('label',{key:o,style:{display:'flex',alignItems:'center',gap:6,padding:'4px 6px',
+        fontSize:11,cursor:'pointer',color:'#1e293b',fontWeight:400,textTransform:'none',letterSpacing:'normal'}},
+        ce('input',{type:'checkbox',checked:selected.includes(o),onChange:()=>toggle(o)}),
+        o
+      )),
+      selected.length>0?ce('button',{type:'button',className:'btn',style:{marginTop:6,width:'100%',fontSize:10},
+        onClick:()=>onChange([])},'Clear'):null
+    ):null
+  );
+}
+
+/* ── Filter bar (brand single-select / model + lead type multi-select) ── */
 function FilterBar({rows, filters, setFilters}){
   const brands = useMemo(()=>distinctSorted(rows,'brand'),[rows]);
   const models = useMemo(()=>distinctSorted(rows.filter(r=>!filters.brand||r.brand===filters.brand),'model'),[rows,filters.brand]);
   const leadTypes = useMemo(()=>distinctSorted(rows,'leadType'),[rows]);
-  function sel(name,options,placeholder){
-    return ce('select',{value:filters[name],onChange:e=>setFilters(f=>({...f,[name]:e.target.value, ...(name==='brand'?{model:''}:{})}))},
-      ce('option',{value:''},placeholder),
-      options.map(o=>ce('option',{key:o,value:o},o))
-    );
-  }
+  const hasFilters = filters.brand || filters.model.length || filters.leadType.length;
   return ce('div',{className:'filter-bar'},
     ce('label',null,'Filters'),
-    sel('brand',brands,'All Brands'),
-    sel('model',models,'All Models'),
-    sel('leadType',leadTypes,'All Lead Types'),
-    (filters.brand||filters.model||filters.leadType)?
-      ce('button',{className:'btn',onClick:()=>setFilters({brand:'',model:'',leadType:''})},'Clear filters'):null
+    ce('select',{value:filters.brand,onChange:e=>setFilters(f=>({...f,brand:e.target.value,model:[]}))},
+      ce('option',{value:''},'All Brands'),
+      brands.map(o=>ce('option',{key:o,value:o},o))
+    ),
+    ce(MultiSelect,{label:'Models', options:models, selected:filters.model, onChange:v=>setFilters(f=>({...f,model:v}))}),
+    ce(MultiSelect,{label:'Lead Types', options:leadTypes, selected:filters.leadType, onChange:v=>setFilters(f=>({...f,leadType:v}))}),
+    hasFilters?
+      ce('button',{className:'btn',onClick:()=>setFilters({brand:'',model:[],leadType:[]})},'Clear filters'):null
   );
 }
 
@@ -288,7 +324,7 @@ function App(){
   const [error,setError]=useState('');
   const [lastSynced,setLastSynced]=useState('');
   const [tab,setTab]=useState('trigger');
-  const [filters,setFilters]=useState({brand:'',model:'',leadType:''});
+  const [filters,setFilters]=useState({brand:'',model:[],leadType:[]});
 
   const sync=useCallback(async function(){
     setSyncing(true); setError('');
@@ -315,8 +351,8 @@ function App(){
 
   const filtered = useMemo(()=>rows.filter(r=>
     (!filters.brand||r.brand===filters.brand) &&
-    (!filters.model||r.model===filters.model) &&
-    (!filters.leadType||r.leadType===filters.leadType)
+    (!filters.model.length||filters.model.includes(r.model)) &&
+    (!filters.leadType.length||filters.leadType.includes(r.leadType))
   ),[rows,filters]);
 
   const triggerPivot = useMemo(()=>pivot(filtered, r=>r.isUnique), [filtered]);
