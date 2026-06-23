@@ -287,17 +287,46 @@ function MultiSelect({label, options, selected, onChange}){
   );
 }
 
-/* ── Filter bar (brand single-select / model, lead type, city, state multi-select) ── */
+/* ── Filter bar (brand single-select / model, lead type, city, state, cam name,
+   is uploaded multi-select) — each field's option list is narrowed by every
+   OTHER currently-active filter, so dropdowns only ever show relevant values ── */
 function FilterBar({rows, filters, setFilters}){
-  const brands = useMemo(()=>distinctSorted(rows,'brand'),[rows]);
-  const models = useMemo(()=>distinctSorted(rows.filter(r=>!filters.brand||r.brand===filters.brand),'model'),[rows,filters.brand]);
-  const leadTypes = useMemo(()=>distinctSorted(rows,'leadType'),[rows]);
-  const states = useMemo(()=>distinctSorted(rows,'state'),[rows]);
-  const cities = useMemo(()=>distinctSorted(rows.filter(r=>!filters.state.length||filters.state.includes(r.state)),'city'),[rows,filters.state]);
-  const camNames = useMemo(()=>distinctSorted(rows,'camName'),[rows]);
-  const uploadFlags = useMemo(()=>distinctSorted(rows,'isUploaded'),[rows]);
+  function matches(r, excludeKey){
+    return (excludeKey==='brand'||!filters.brand||r.brand===filters.brand) &&
+      (excludeKey==='model'||!filters.model.length||filters.model.includes(r.model)) &&
+      (excludeKey==='leadType'||!filters.leadType.length||filters.leadType.includes(r.leadType)) &&
+      (excludeKey==='state'||!filters.state.length||filters.state.includes(r.state)) &&
+      (excludeKey==='city'||!filters.city.length||filters.city.includes(r.city)) &&
+      (excludeKey==='camName'||!filters.camName.length||filters.camName.includes(r.camName)) &&
+      (excludeKey==='isUploaded'||!filters.isUploaded.length||filters.isUploaded.includes(r.isUploaded));
+  }
+  const brands = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'brand')),'brand'),[rows,filters]);
+  const models = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'model')),'model'),[rows,filters]);
+  const leadTypes = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'leadType')),'leadType'),[rows,filters]);
+  const states = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'state')),'state'),[rows,filters]);
+  const cities = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'city')),'city'),[rows,filters]);
+  const camNames = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'camName')),'camName'),[rows,filters]);
+  const uploadFlags = useMemo(()=>distinctSorted(rows.filter(r=>matches(r,'isUploaded')),'isUploaded'),[rows,filters]);
   const hasFilters = filters.brand || filters.model.length || filters.leadType.length || filters.state.length ||
     filters.city.length || filters.camName.length || filters.isUploaded.length;
+
+  /* Drop selections that fall outside the now-narrowed option lists
+     (e.g. a CAM Name no longer valid once Brand/State change). */
+  useEffect(function(){
+    setFilters(f=>{
+      const next={...f,
+        model:f.model.filter(v=>models.includes(v)),
+        leadType:f.leadType.filter(v=>leadTypes.includes(v)),
+        state:f.state.filter(v=>states.includes(v)),
+        city:f.city.filter(v=>cities.includes(v)),
+        camName:f.camName.filter(v=>camNames.includes(v)),
+        isUploaded:f.isUploaded.filter(v=>uploadFlags.includes(v))
+      };
+      const changed = Object.keys(next).some(k=>JSON.stringify(next[k])!==JSON.stringify(f[k]));
+      return changed?next:f;
+    });
+  },[models,leadTypes,states,cities,camNames,uploadFlags]);
+
   return ce('div',{className:'filter-bar'},
     ce('label',null,'Filters'),
     ce('select',{value:filters.brand,onChange:e=>setFilters(f=>({...f,brand:e.target.value,model:[]}))},
