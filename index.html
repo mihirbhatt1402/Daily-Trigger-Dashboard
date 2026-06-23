@@ -559,9 +559,20 @@ function OverviewTable({rows, onControls}){
     }
   }
 
-  const colHeaderLabel=col=>col.kind==='combined'?'Total':col.source+' — '+(col.kind==='unique'?'Unique':'Duplicate');
+  /* header groups: each source spans its Unique/Duplicate pair (colSpan 2),
+     the trailing Total group spans Unique/Duplicate/All (colSpan 3) */
+  const headerGroups=[];
+  { let i=0;
+    for(const s of sources){ headerGroups.push({label:s, colStart:i, span:2}); i+=2; }
+    headerGroups.push({label:'Total', colStart:i, span:3}); i+=3;
+  }
+  const groupLabelRow=new Array(cols.length).fill('');
+  for(const g of headerGroups) groupLabelRow[g.colStart]=g.label;
+  const subLabelRow=cols.map(col=>col.kind==='unique'?'Unique':col.kind==='duplicate'?'Duplicate':'All');
+
   const matrix=[
-    ['Brand', ...cols.map(colHeaderLabel)],
+    ['Brand', ...groupLabelRow],
+    ['', ...subLabelRow],
     ['Total', ...colTotals.map(String)],
     ...displayRows.map(dr=>{
       const label = dr.type==='brand'?dr.brand:('  '+dr.model);
@@ -633,15 +644,9 @@ function OverviewTable({rows, onControls}){
     setExpanded(s=>{ const n=new Set(s); n.has(b)?n.delete(b):n.add(b); return n; });
   }
 
-  function colHeaderCell(col,i){
-    return th(0,i+1,
-      ce('span',{style:{display:'flex',flexDirection:'column',gap:1}},
-        ce('span',null,col.kind==='combined'?'Total':col.source),
-        ce('span',{style:{fontSize:7,opacity:.8,fontWeight:600}},
-          col.kind==='unique'?'Unique':col.kind==='duplicate'?'Duplicate':'All')
-      ),
-      col.kind==='duplicate'?{style:{background:'linear-gradient(135deg,#9D5FE8,#6D28D9)'}}:null
-    );
+  function subHeaderCell(col,i){
+    return th(1,i+1, col.kind==='unique'?'Unique':col.kind==='duplicate'?'Duplicate':'All',
+      col.kind==='duplicate'?{style:{background:'linear-gradient(135deg,#9D5FE8,#6D28D9)',top:24}}:{style:{top:24}});
   }
   function colCell(r,counts,col,i,extra){
     return td(r,i+1,Nf(cellVal(counts,col)), Object.assign({},extra,
@@ -653,17 +658,20 @@ function OverviewTable({rows, onControls}){
       ce('table',null,
         ce('thead',null,
           ce('tr',null,
-            th(0,0,'Brand',{className:'left'}),
-            cols.map((col,i)=>colHeaderCell(col,i))
+            th(0,0,'Brand',{className:'left',rowSpan:2}),
+            headerGroups.map(g=>th(0,g.colStart+1,g.label,{colSpan:g.span}))
+          ),
+          ce('tr',null,
+            cols.map((col,i)=>subHeaderCell(col,i))
           )
         ),
         ce('tbody',null,
           ce('tr',{className:'total-row'},
-            td(1,0,'Total',{className:'label'}),
-            cols.map((col,i)=>td(1,i+1,Nf(colTotals[i])))
+            td(2,0,'Total',{className:'label'}),
+            cols.map((col,i)=>td(2,i+1,Nf(colTotals[i])))
           ),
           displayRows.map((dr,i)=>{
-            const r=i+2;
+            const r=i+3;
             const labelContent = dr.type==='brand'?
               ce('span',{style:{display:'flex',alignItems:'center',gap:6}},
                 ce('button',{type:'button',
