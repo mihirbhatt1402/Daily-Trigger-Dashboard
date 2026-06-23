@@ -496,21 +496,29 @@ function GridTable({dates, sources, grid, title, onControls}){
   );
 }
 
-/* ── Aggregate rows into brand → { total per source, models: { model → per source } } ── */
+/* ── Aggregate rows into brand → { total per source: {unique,duplicate},
+   models: { model → per source: {unique,duplicate} } } ── */
 function buildBrandModelAgg(rows){
   const brands={};
   for(const r of rows){
     if(!brands[r.brand]) brands[r.brand]={total:{}, models:{}};
     const b=brands[r.brand];
-    b.total[r.source]=(b.total[r.source]||0)+1;
+    const kind=r.isUnique?'unique':'duplicate';
+    if(!b.total[r.source]) b.total[r.source]={unique:0,duplicate:0};
+    b.total[r.source][kind]++;
     if(!b.models[r.model]) b.models[r.model]={};
-    b.models[r.model][r.source]=(b.models[r.model][r.source]||0)+1;
+    if(!b.models[r.model][r.source]) b.models[r.model][r.source]={unique:0,duplicate:0};
+    b.models[r.model][r.source][kind]++;
   }
   return brands;
 }
+function sumSourceCounts(counts){
+  return Object.values(counts).reduce((s,c)=>s+c.unique+c.duplicate,0);
+}
 
-/* ── Overview table: Brand × Source, brand rows expand/collapse into
-   model rows. Same drag-select + copy-as-TSV behavior as GridTable. ── */
+/* ── Overview table: Brand × Source (each split into Unique/Duplicate
+   sub-columns), brand rows expand/collapse into model rows. Same
+   drag-select + copy-as-TSV behavior as GridTable. ── */
 function OverviewTable({rows, onControls}){
   const [expanded,setExpanded]=useState(new Set());
   const [sel,setSel]=useState(null);
@@ -519,32 +527,45 @@ function OverviewTable({rows, onControls}){
 
   const sources = useMemo(()=>sortSources(distinctSorted(rows,'source')),[rows]);
   const agg = useMemo(()=>buildBrandModelAgg(rows),[rows]);
-  function rowTotal(counts){ return Object.values(counts).reduce((a,b)=>a+b,0); }
-  const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>rowTotal(agg[b].total)-rowTotal(agg[a].total)),[agg]);
+  const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>sumSourceCounts(agg[b].total)-sumSourceCounts(agg[a].total)),[agg]);
 
   if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
-  const colTotals={};
-  for(const s of sources) colTotals[s]=brands.reduce((sum,b)=>sum+(agg[b].total[s]||0),0);
-  const grandTotal=sources.reduce((s,c)=>s+colTotals[c],0);
+  /* column model: one [source,'unique'/'duplicate'] pair per source,
+     plus a trailing Total group with the same two kinds + a combined total */
+  const cols=[
+    ...sources.flatMap(s=>[{source:s,kind:'unique'},{source:s,kind:'duplicate'}]),
+    {source:'Total',kind:'unique'}, {source:'Total',kind:'duplicate'}, {source:'Total',kind:'combined'}
+  ];
+  function cellVal(counts,col){
+    if(col.source==='Total'){
+      if(col.kind==='unique') return sources.reduce((s,src)=>s+((counts[src]&&counts[src].unique)||0),0);
+      if(col.kind==='duplicate') return sources.reduce((s,src)=>s+((counts[src]&&counts[src].duplicate)||0),0);
+      return sumSourceCounts(counts);
+    }
+    const c=counts[col.source];
+    return c?c[col.kind]:0;
+  }
+
+  const colTotals=cols.map(col=>brands.reduce((sum,b)=>sum+cellVal(agg[b].total,col),0));
 
   const displayRows=[];
   for(const b of brands){
     displayRows.push({type:'brand', brand:b, counts:agg[b].total});
     if(expanded.has(b)){
-      const models=Object.keys(agg[b].models).sort((m1,m2)=>rowTotal(agg[b].models[m2])-rowTotal(agg[b].models[m1]));
+      const models=Object.keys(agg[b].models).sort((m1,m2)=>sumSourceCounts(agg[b].models[m2])-sumSourceCounts(agg[b].models[m1]));
       for(const m of models) displayRows.push({type:'model', brand:b, model:m, counts:agg[b].models[m]});
     }
   }
 
+  const colHeaderLabel=col=>col.kind==='combined'?'Total':col.source+' — '+(col.kind==='unique'?'Unique':'Duplicate');
   const matrix=[
-    ['Brand', ...sources, 'Total'],
-    ['Total', ...sources.map(s=>String(colTotals[s])), String(grandTotal)],
+    ['Brand', ...cols.map(colHeaderLabel)],
+    ['Total', ...colTotals.map(String)],
     ...displayRows.map(dr=>{
-      const rowTotal=sources.reduce((s,c)=>s+(dr.counts[c]||0),0);
       const label = dr.type==='brand'?dr.brand:('  '+dr.model);
-      return [label, ...sources.map(s=>String(dr.counts[s]||0)), String(rowTotal)];
+      return [label, ...cols.map(col=>String(cellVal(dr.counts,col)))];
     })
   ];
   const nCols=matrix[0].length;
@@ -612,25 +633,37 @@ function OverviewTable({rows, onControls}){
     setExpanded(s=>{ const n=new Set(s); n.has(b)?n.delete(b):n.add(b); return n; });
   }
 
+  function colHeaderCell(col,i){
+    return th(0,i+1,
+      ce('span',{style:{display:'flex',flexDirection:'column',gap:1}},
+        ce('span',null,col.kind==='combined'?'Total':col.source),
+        ce('span',{style:{fontSize:7,opacity:.8,fontWeight:600}},
+          col.kind==='unique'?'Unique':col.kind==='duplicate'?'Duplicate':'All')
+      ),
+      col.kind==='duplicate'?{style:{background:'linear-gradient(135deg,#9D5FE8,#6D28D9)'}}:null
+    );
+  }
+  function colCell(r,counts,col,i,extra){
+    return td(r,i+1,Nf(cellVal(counts,col)), Object.assign({},extra,
+      col.kind==='duplicate'?{style:Object.assign({},(extra&&extra.style)||{},{background:'#FAF5FF'})}:{}));
+  }
+
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
         ce('thead',null,
           ce('tr',null,
             th(0,0,'Brand',{className:'left'}),
-            sources.map((s,i)=>th(0,i+1,s)),
-            th(0,nCols-1,'Total')
+            cols.map((col,i)=>colHeaderCell(col,i))
           )
         ),
         ce('tbody',null,
           ce('tr',{className:'total-row'},
             td(1,0,'Total',{className:'label'}),
-            sources.map((s,i)=>td(1,i+1,Nf(colTotals[s]))),
-            td(1,nCols-1,Nf(grandTotal))
+            cols.map((col,i)=>td(1,i+1,Nf(colTotals[i])))
           ),
           displayRows.map((dr,i)=>{
             const r=i+2;
-            const rowTotal=sources.reduce((s,c)=>s+(dr.counts[c]||0),0);
             const labelContent = dr.type==='brand'?
               ce('span',{style:{display:'flex',alignItems:'center',gap:6}},
                 ce('button',{type:'button',
@@ -643,8 +676,8 @@ function OverviewTable({rows, onControls}){
               ce('span',{style:{paddingLeft:20,color:'#5b5070'}},dr.model);
             return ce('tr',{key:dr.type+dr.brand+(dr.model||'')},
               td(r,0,labelContent,{className:'label'}),
-              sources.map((s,i2)=>td(r,i2+1,Nf(dr.counts[s]||0))),
-              td(r,nCols-1,Nf(rowTotal),{style:{fontWeight:dr.type==='brand'?700:400}})
+              cols.map((col,i2)=>colCell(r,dr.counts,col,i2,
+                col.kind==='combined'?{style:{fontWeight:dr.type==='brand'?700:400}}:null))
             );
           })
         )
