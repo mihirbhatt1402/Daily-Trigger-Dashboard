@@ -215,6 +215,14 @@ function distinctSorted(rows,field){
   return Array.from(new Set(rows.map(r=>r[field]))).filter(Boolean).sort();
 }
 
+/* ── Fixed display order for the source column; anything else is
+   appended alphabetically after these. ──────────────────────────── */
+const SOURCE_ORDER = ['Organic','Non MS','MS FB','Adwords','CV','Others','Microsite'];
+function sortSources(sources){
+  const rank=s=>{ const i=SOURCE_ORDER.findIndex(o=>o.toLowerCase()===String(s).toLowerCase()); return i===-1?SOURCE_ORDER.length:i; };
+  return [...sources].sort((a,b)=> rank(a)-rank(b) || a.localeCompare(b));
+}
+
 /* ── Pivot rows into date × source grid, counting matched leads ──── */
 function pivot(rows, predicate){
   const dateSet=new Set(), sourceSet=new Set();
@@ -226,7 +234,7 @@ function pivot(rows, predicate){
     grid[r.date][r.source]=(grid[r.date][r.source]||0)+1;
   }
   const dates=Array.from(dateSet).sort().reverse();
-  const sources=Array.from(sourceSet).sort();
+  const sources=sortSources(Array.from(sourceSet));
   return {dates, sources, grid};
 }
 
