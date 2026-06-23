@@ -534,7 +534,8 @@ function OverviewTable({rows}){
 
   const sources = useMemo(()=>sortSources(distinctSorted(rows,'source')),[rows]);
   const agg = useMemo(()=>buildBrandModelAgg(rows),[rows]);
-  const brands = useMemo(()=>Object.keys(agg).sort(),[agg]);
+  function rowTotal(counts){ return Object.values(counts).reduce((a,b)=>a+b,0); }
+  const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>rowTotal(agg[b].total)-rowTotal(agg[a].total)),[agg]);
 
   if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
@@ -547,7 +548,7 @@ function OverviewTable({rows}){
   for(const b of brands){
     displayRows.push({type:'brand', brand:b, counts:agg[b].total});
     if(expanded.has(b)){
-      const models=Object.keys(agg[b].models).sort();
+      const models=Object.keys(agg[b].models).sort((m1,m2)=>rowTotal(agg[b].models[m2])-rowTotal(agg[b].models[m1]));
       for(const m of models) displayRows.push({type:'model', brand:b, model:m, counts:agg[b].models[m]});
     }
   }
