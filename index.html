@@ -192,10 +192,12 @@ function parseRows(raw){
     const model  = g('model')||'Unknown';
     const leadType = g(['lead_type','lead type'])||'Unknown';
     const source = g(['final_source','source'])||'Unknown';
+    const city   = g(['verified_city','city'])||'Unknown';
+    const state  = g(['state'])||'Unknown';
     const date   = toISODate(g(['triggered_date','triggered date','trig_date','trig date']));
     const mobile = g(['encrypt_mobile_number','encrypted_mobile_number','mobile']);
     if(!date || !mobile) continue;
-    out.push({idLead, brand, model, leadType, source, date, mobile, _order:i});
+    out.push({idLead, brand, model, leadType, source, city, state, date, mobile, _order:i});
   }
   /* sort by date then original append order, so dedupe follows
      chronological/append sequence — same as the source COUNTIFS column */
@@ -283,12 +285,14 @@ function MultiSelect({label, options, selected, onChange}){
   );
 }
 
-/* ── Filter bar (brand single-select / model + lead type multi-select) ── */
+/* ── Filter bar (brand single-select / model, lead type, city, state multi-select) ── */
 function FilterBar({rows, filters, setFilters}){
   const brands = useMemo(()=>distinctSorted(rows,'brand'),[rows]);
   const models = useMemo(()=>distinctSorted(rows.filter(r=>!filters.brand||r.brand===filters.brand),'model'),[rows,filters.brand]);
   const leadTypes = useMemo(()=>distinctSorted(rows,'leadType'),[rows]);
-  const hasFilters = filters.brand || filters.model.length || filters.leadType.length;
+  const states = useMemo(()=>distinctSorted(rows,'state'),[rows]);
+  const cities = useMemo(()=>distinctSorted(rows.filter(r=>!filters.state.length||filters.state.includes(r.state)),'city'),[rows,filters.state]);
+  const hasFilters = filters.brand || filters.model.length || filters.leadType.length || filters.state.length || filters.city.length;
   return ce('div',{className:'filter-bar'},
     ce('label',null,'Filters'),
     ce('select',{value:filters.brand,onChange:e=>setFilters(f=>({...f,brand:e.target.value,model:[]}))},
@@ -297,8 +301,10 @@ function FilterBar({rows, filters, setFilters}){
     ),
     ce(MultiSelect,{label:'Models', options:models, selected:filters.model, onChange:v=>setFilters(f=>({...f,model:v}))}),
     ce(MultiSelect,{label:'Lead Types', options:leadTypes, selected:filters.leadType, onChange:v=>setFilters(f=>({...f,leadType:v}))}),
+    ce(MultiSelect,{label:'States', options:states, selected:filters.state, onChange:v=>setFilters(f=>({...f,state:v,city:[]}))}),
+    ce(MultiSelect,{label:'Cities', options:cities, selected:filters.city, onChange:v=>setFilters(f=>({...f,city:v}))}),
     hasFilters?
-      ce('button',{className:'btn',onClick:()=>setFilters({brand:'',model:[],leadType:[]})},'Clear filters'):null
+      ce('button',{className:'btn',onClick:()=>setFilters({brand:'',model:[],leadType:[],state:[],city:[]})},'Clear filters'):null
   );
 }
 
@@ -441,7 +447,7 @@ function App(){
   const [error,setError]=useState('');
   const [lastSynced,setLastSynced]=useState('');
   const [tab,setTab]=useState('trigger');
-  const [filters,setFilters]=useState({brand:'',model:[],leadType:[]});
+  const [filters,setFilters]=useState({brand:'',model:[],leadType:[],state:[],city:[]});
 
   const sync=useCallback(async function(){
     setSyncing(true); setError('');
@@ -469,7 +475,9 @@ function App(){
   const filtered = useMemo(()=>rows.filter(r=>
     (!filters.brand||r.brand===filters.brand) &&
     (!filters.model.length||filters.model.includes(r.model)) &&
-    (!filters.leadType.length||filters.leadType.includes(r.leadType))
+    (!filters.leadType.length||filters.leadType.includes(r.leadType)) &&
+    (!filters.state.length||filters.state.includes(r.state)) &&
+    (!filters.city.length||filters.city.includes(r.city))
   ),[rows,filters]);
 
   const triggerPivot = useMemo(()=>pivot(filtered, r=>r.isUnique), [filtered]);
