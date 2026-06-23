@@ -381,7 +381,7 @@ async function copyTsv(rows){
 
 /* ── Grid table (date rows × source cols) — supports drag-select +
    copy (Ctrl/Cmd+C or button), TSV format pastes into Excel/Sheets ── */
-function GridTable({dates, sources, grid, title}){
+function GridTable({dates, sources, grid, title, onControls}){
   const [sel,setSel]=useState(null); /* {r0,c0,r1,c1} */
   const draggingRef=useRef(false);
   const wrapRef=useRef(null);
@@ -438,6 +438,10 @@ function GridTable({dates, sources, grid, title}){
     return ()=>{ document.removeEventListener('keydown',onKey); document.removeEventListener('mouseup',onMouseUp); };
   },[sel,matrix]);
 
+  useEffect(function(){
+    if(onControls) onControls({sel, copied, doCopy});
+  },[sel,copied,dates,sources,grid]);
+
   function td(r,c,content,extra){
     const selected=inSel(r,c);
     const base=(extra&&extra.style)||{};
@@ -462,11 +466,6 @@ function GridTable({dates, sources, grid, title}){
   }
 
   return ce('div',{ref:wrapRef},
-    ce('div',{style:{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:8}},
-      sel?ce('span',{className:'muted'},'Selection: '+(Math.abs(sel.r1-sel.r0)+1)+'×'+(Math.abs(sel.c1-sel.c0)+1)):
-        ce('span',{className:'muted'},'Drag to select cells, or copy the whole grid'),
-      ce('button',{className:'btn',onClick:doCopy}, copied?'Copied ✓':(sel?'Copy selection':'Copy whole grid'))
-    ),
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
         ce('thead',null,
@@ -512,7 +511,7 @@ function buildBrandModelAgg(rows){
 
 /* ── Overview table: Brand × Source, brand rows expand/collapse into
    model rows. Same drag-select + copy-as-TSV behavior as GridTable. ── */
-function OverviewTable({rows}){
+function OverviewTable({rows, onControls}){
   const [expanded,setExpanded]=useState(new Set());
   const [sel,setSel]=useState(null);
   const draggingRef=useRef(false);
@@ -583,6 +582,10 @@ function OverviewTable({rows}){
     return ()=>{ document.removeEventListener('keydown',onKey); document.removeEventListener('mouseup',onMouseUp); };
   },[sel,matrix]);
 
+  useEffect(function(){
+    if(onControls) onControls({sel, copied, doCopy});
+  },[sel,copied,rows]);
+
   function td(r,c,content,extra){
     const selected=inSel(r,c);
     const base=(extra&&extra.style)||{};
@@ -610,11 +613,6 @@ function OverviewTable({rows}){
   }
 
   return ce('div',null,
-    ce('div',{style:{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:8}},
-      sel?ce('span',{className:'muted'},'Selection: '+(Math.abs(sel.r1-sel.r0)+1)+'×'+(Math.abs(sel.c1-sel.c0)+1)):
-        ce('span',{className:'muted'},'Click ▸ to expand a brand into models. Drag to select cells.'),
-      ce('button',{className:'btn',onClick:doCopy}, copied?'Copied ✓':(sel?'Copy selection':'Copy whole grid'))
-    ),
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
         ce('thead',null,
@@ -663,6 +661,8 @@ function App({topBar}){
   const [lastSynced,setLastSynced]=useState('');
   const [tab,setTab]=useState('overview');
   const [filters,setFilters]=useState({brand:'',model:[],leadType:[],state:[],city:[],camName:[],isUploaded:[]});
+  const [tableControls,setTableControls]=useState(null);
+  function switchTab(t){ setTableControls(null); setTab(t); }
 
   const sync=useCallback(async function(){
     setSyncing(true); setError('');
@@ -724,16 +724,21 @@ function App({topBar}){
         ce('div',{className:'kpi c-peach'},ce('div',{className:'kpi-label'},'Duplicate %'),ce('div',{className:'kpi-value'},Pf(totalLeads?duplicateLeads/totalLeads*100:0)))
       ),
       ce(FilterBar,{rows, filters, setFilters}),
-      ce('div',{style:{display:'flex',gap:4,marginBottom:14,borderBottom:'1px solid #DBEAFE'}},
-        ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>setTab('overview')},'Overview'),
-        ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>setTab('trigger')},'Day-wise Source-wise Trigger'),
-        ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>setTab('duplicate')},'Day-wise Source-wise Duplicate')
+      ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,
+        borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8}},
+        ce('div',{style:{display:'flex',gap:4}},
+          ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
+          ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
+          ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate')
+        ),
+        tableControls?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
+          tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
       ),
       tab==='overview'?
-        ce(OverviewTable,{rows:filtered}):
+        ce(OverviewTable,{rows:filtered, onControls:setTableControls}):
       tab==='trigger'?
-        ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid}):
-        ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid})
+        ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
+        ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
