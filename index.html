@@ -302,36 +302,133 @@ function FilterBar({rows, filters, setFilters}){
   );
 }
 
-/* ── Grid table (date rows × source cols) ────────────────────────── */
+/* ── Copy-to-clipboard helper: TSV pastes cleanly into Excel/Sheets ── */
+async function copyTsv(rows){
+  const tsv=rows.map(r=>r.join('\t')).join('\n');
+  try{ await navigator.clipboard.writeText(tsv); return true; }
+  catch(e){
+    const ta=document.createElement('textarea');
+    ta.value=tsv; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    let ok=false; try{ ok=document.execCommand('copy'); }catch(_){}
+    document.body.removeChild(ta);
+    return ok;
+  }
+}
+
+/* ── Grid table (date rows × source cols) — supports drag-select +
+   copy (Ctrl/Cmd+C or button), TSV format pastes into Excel/Sheets ── */
 function GridTable({dates, sources, grid, title}){
+  const [sel,setSel]=useState(null); /* {r0,c0,r1,c1} */
+  const draggingRef=useRef(false);
+  const wrapRef=useRef(null);
+  const [copied,setCopied]=useState(false);
+
   if(!dates.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
+
   const colTotals={};
   for(const s of sources) colTotals[s]=dates.reduce((sum,d)=>sum+((grid[d]||{})[s]||0),0);
   const grandTotal=sources.reduce((s,c)=>s+colTotals[c],0);
-  return ce('div',{className:'card scroll-x fade-up'},
-    ce('table',null,
-      ce('thead',null,
-        ce('tr',null,
-          ce('th',{className:'left'},'Trig. Date'),
-          sources.map(s=>ce('th',{key:s},s)),
-          ce('th',null,'Total')
-        )
-      ),
-      ce('tbody',null,
-        ce('tr',{className:'total-row'},
-          ce('td',{className:'label'},'Total'),
-          sources.map(s=>ce('td',{key:s},Nf(colTotals[s]))),
-          ce('td',null,Nf(grandTotal))
+
+  /* matrix[0] = header, matrix[1] = grand total, matrix[2..] = date rows */
+  const matrix=[
+    ['Trig. Date', ...sources, 'Total'],
+    ['Total', ...sources.map(s=>String(colTotals[s])), String(grandTotal)],
+    ...dates.map(d=>{
+      const rowTotal=sources.reduce((s,c)=>s+((grid[d]||{})[c]||0),0);
+      return [formatDateDMY(d), ...sources.map(s=>String((grid[d]||{})[s]||0)), String(rowTotal)];
+    })
+  ];
+  const nRows=matrix.length, nCols=matrix[0].length;
+
+  function inSel(r,c){
+    if(!sel) return false;
+    const r0=Math.min(sel.r0,sel.r1), r1=Math.max(sel.r0,sel.r1);
+    const c0=Math.min(sel.c0,sel.c1), c1=Math.max(sel.c0,sel.c1);
+    return r>=r0&&r<=r1&&c>=c0&&c<=c1;
+  }
+  function startSel(r,c){ draggingRef.current=true; setSel({r0:r,c0:c,r1:r,c1:c}); setCopied(false); }
+  function extendSel(r,c){ if(draggingRef.current) setSel(s=>s?{...s,r1:r,c1:c}:{r0:r,c0:c,r1:r,c1:c}); }
+  function endSel(){ draggingRef.current=false; }
+
+  async function doCopy(){
+    let out;
+    if(sel){
+      const r0=Math.min(sel.r0,sel.r1), r1=Math.max(sel.r0,sel.r1);
+      const c0=Math.min(sel.c0,sel.c1), c1=Math.max(sel.c0,sel.c1);
+      out=matrix.slice(r0,r1+1).map(row=>row.slice(c0,c1+1));
+    }else{
+      out=matrix;
+    }
+    const ok=await copyTsv(out);
+    if(ok){ setCopied(true); setTimeout(()=>setCopied(false),1500); }
+  }
+
+  useEffect(function(){
+    function onKey(e){
+      if((e.ctrlKey||e.metaKey) && (e.key==='c'||e.key==='C') && sel) doCopy();
+    }
+    function onMouseUp(){ endSel(); }
+    document.addEventListener('keydown',onKey);
+    document.addEventListener('mouseup',onMouseUp);
+    return ()=>{ document.removeEventListener('keydown',onKey); document.removeEventListener('mouseup',onMouseUp); };
+  },[sel,matrix]);
+
+  function td(r,c,content,extra){
+    const selected=inSel(r,c);
+    const base=(extra&&extra.style)||{};
+    return ce('td', Object.assign({}, extra, {
+      key:c,
+      onMouseDown:(e)=>{ e.preventDefault(); startSel(r,c); },
+      onMouseOver:()=>extendSel(r,c),
+      style:Object.assign({userSelect:'none',cursor:'cell'}, base,
+        selected?{boxShadow:'inset 0 0 0 2px var(--violet)',background:'rgba(139,92,246,.18)'}:{})
+    }), content);
+  }
+  function th(r,c,content,extra){
+    const selected=inSel(r,c);
+    const base=(extra&&extra.style)||{};
+    return ce('th', Object.assign({}, extra, {
+      key:c,
+      onMouseDown:(e)=>{ e.preventDefault(); startSel(r,c); },
+      onMouseOver:()=>extendSel(r,c),
+      style:Object.assign({userSelect:'none',cursor:'cell'}, base,
+        selected?{boxShadow:'inset 0 0 0 2px #fff'}:{})
+    }), content);
+  }
+
+  return ce('div',{ref:wrapRef},
+    ce('div',{style:{display:'flex',justifyContent:'flex-end',gap:8,marginBottom:8}},
+      sel?ce('span',{className:'muted'},'Selection: '+(Math.abs(sel.r1-sel.r0)+1)+'×'+(Math.abs(sel.c1-sel.c0)+1)):
+        ce('span',{className:'muted'},'Drag to select cells, or copy the whole grid'),
+      ce('button',{className:'btn',onClick:doCopy}, copied?'Copied ✓':(sel?'Copy selection':'Copy whole grid'))
+    ),
+    ce('div',{className:'card scroll-x fade-up'},
+      ce('table',null,
+        ce('thead',null,
+          ce('tr',null,
+            th(0,0,'Trig. Date',{className:'left'}),
+            sources.map((s,i)=>th(0,i+1,s)),
+            th(0,nCols-1,'Total')
+          )
         ),
-        dates.map(d=>{
-          const rowTotal=sources.reduce((s,c)=>s+((grid[d]||{})[c]||0),0);
-          return ce('tr',{key:d},
-            ce('td',{className:'label'},formatDateDMY(d)),
-            sources.map(s=>ce('td',{key:s},Nf((grid[d]||{})[s]||0))),
-            ce('td',{style:{fontWeight:700}},Nf(rowTotal))
-          );
-        })
+        ce('tbody',null,
+          ce('tr',{className:'total-row'},
+            td(1,0,'Total',{className:'label'}),
+            sources.map((s,i)=>td(1,i+1,Nf(colTotals[s]))),
+            td(1,nCols-1,Nf(grandTotal))
+          ),
+          dates.map((d,di)=>{
+            const r=di+2;
+            const rowTotal=sources.reduce((s,c)=>s+((grid[d]||{})[c]||0),0);
+            return ce('tr',{key:d},
+              td(r,0,formatDateDMY(d),{className:'label'}),
+              sources.map((s,i)=>td(r,i+1,Nf((grid[d]||{})[s]||0))),
+              td(r,nCols-1,Nf(rowTotal),{style:{fontWeight:700}})
+            );
+          })
+        )
       )
     )
   );
