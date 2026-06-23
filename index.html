@@ -707,8 +707,11 @@ function App({topBar}){
   return ce('div',{style:{maxWidth:1280,margin:'0 auto',padding:'20px 24px'}},
     topBar,
     ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}},
-      ce('h1',{style:{fontSize:19,fontWeight:700,backgroundImage:'linear-gradient(135deg,var(--violet-d),var(--pink))',
-        WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}},'Daily Trigger Dashboard'),
+      ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
+        ce('img',{src:'logo.png',alt:'BikeDekho',style:{height:30,width:'auto'}}),
+        ce('h1',{style:{fontSize:19,fontWeight:700,backgroundImage:'linear-gradient(135deg,var(--violet-d),var(--pink))',
+          WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}},'Bikes | Enterprise | Daily Trigger Dashboard')
+      ),
       ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
         lastSynced?ce('span',{className:'muted'},'Last synced: '+lastSynced):null,
         ce('button',{className:'btn btn-primary',onClick:sync,disabled:syncing},
