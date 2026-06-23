@@ -124,6 +124,10 @@ const ce = React.createElement;
 const {useState, useEffect, useMemo, useRef, useCallback} = React;
 
 function Nf(n){ return n==null||isNaN(n)?'—':Number(n).toLocaleString('en-IN'); }
+function formatDateDMY(iso){
+  const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m?m[3]+'-'+m[2]+'-'+m[1]:iso;
+}
 
 /* ── Flexible column getter ──────────────────────────────────────── */
 function makeGetter(row){
@@ -259,19 +263,19 @@ function GridTable({dates, sources, grid, title}){
         )
       ),
       ce('tbody',null,
-        dates.map(d=>{
-          const rowTotal=sources.reduce((s,c)=>s+((grid[d]||{})[c]||0),0);
-          return ce('tr',{key:d},
-            ce('td',{className:'label'},d),
-            sources.map(s=>ce('td',{key:s},Nf((grid[d]||{})[s]||0))),
-            ce('td',{style:{fontWeight:700}},Nf(rowTotal))
-          );
-        }),
         ce('tr',{className:'total-row'},
           ce('td',{className:'label'},'Total'),
           sources.map(s=>ce('td',{key:s},Nf(colTotals[s]))),
           ce('td',null,Nf(grandTotal))
-        )
+        ),
+        dates.map(d=>{
+          const rowTotal=sources.reduce((s,c)=>s+((grid[d]||{})[c]||0),0);
+          return ce('tr',{key:d},
+            ce('td',{className:'label'},formatDateDMY(d)),
+            sources.map(s=>ce('td',{key:s},Nf((grid[d]||{})[s]||0))),
+            ce('td',{style:{fontWeight:700}},Nf(rowTotal))
+          );
+        })
       )
     )
   );
