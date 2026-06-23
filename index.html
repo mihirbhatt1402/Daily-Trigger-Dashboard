@@ -278,20 +278,6 @@ function pivot(rows, predicate){
 }
 
 /* ── Sync panel ───────────────────────────────────────────────────── */
-function SyncPanel({onSync, syncing, error, lastSynced}){
-  return ce('div',{className:'filter-bar',style:{justifyContent:'space-between'}},
-    ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
-      ce('label',null,'Live Source'),
-      ce('span',{className:'muted'},'Google Sheet (gviz CSV export)'),
-    ),
-    ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
-      lastSynced?ce('span',{className:'muted'},'Last synced: '+lastSynced):null,
-      ce('button',{className:'btn btn-primary',onClick:onSync,disabled:syncing},
-        syncing?ce('span',{className:'spinner'}):'Refresh now')
-    )
-  );
-}
-
 /* ── Multi-select dropdown (checkbox popover) ────────────────────── */
 function MultiSelect({label, options, selected, onChange}){
   const [open,setOpen]=useState(false);
@@ -720,12 +706,15 @@ function App({topBar}){
 
   return ce('div',{style:{maxWidth:1280,margin:'0 auto',padding:'20px 24px'}},
     topBar,
-    ce('div',{style:{display:'flex',alignItems:'baseline',justifyContent:'space-between',marginBottom:16}},
+    ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}},
       ce('h1',{style:{fontSize:19,fontWeight:700,backgroundImage:'linear-gradient(135deg,var(--violet-d),var(--pink))',
         WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}},'Daily Trigger Dashboard'),
-      ce('span',{className:'muted'},'Live from Google Sheets')
+      ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
+        lastSynced?ce('span',{className:'muted'},'Last synced: '+lastSynced):null,
+        ce('button',{className:'btn btn-primary',onClick:sync,disabled:syncing},
+          syncing?ce('span',{className:'spinner'}):'Refresh now')
+      )
     ),
-    ce(SyncPanel,{onSync:sync, syncing, error, lastSynced}),
     error?ce('div',{className:'err-box'},error):null,
     rows.length?ce(React.Fragment,null,
       ce('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}},
