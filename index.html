@@ -290,13 +290,21 @@ function MultiSelect({label, options, selected, onChange}){
   function toggle(o){
     onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o]);
   }
+  const allSelected = options.length>0 && options.every(o=>selected.includes(o));
+  function toggleAll(){ onChange(allSelected?[]:options.slice()); }
   const text = selected.length===0?('All '+label):(selected.length===1?selected[0]:selected.length+' '+label+' selected');
   return ce('div',{ref, style:{position:'relative'}},
     ce('button',{type:'button',className:'btn',style:{borderRadius:20,minWidth:120,textAlign:'left'},onClick:()=>setOpen(!open)}, text+' ▾'),
     open?ce('div',{style:{position:'absolute',top:'110%',left:0,zIndex:10,background:'#fff',
       border:'1px solid var(--violet-200)',borderRadius:10,boxShadow:'var(--shadow-card)',
       padding:8,minWidth:200,maxHeight:240,overflowY:'auto'}},
-      options.length===0?ce('div',{className:'muted',style:{padding:'4px 6px'}},'No options'):null,
+      options.length===0?ce('div',{className:'muted',style:{padding:'4px 6px'}},'No options'):
+        ce('label',{style:{display:'flex',alignItems:'center',gap:6,padding:'4px 6px',
+          fontSize:11,cursor:'pointer',color:'#1e293b',fontWeight:700,textTransform:'none',letterSpacing:'normal',
+          borderBottom:'1px solid var(--violet-100)',marginBottom:4}},
+          ce('input',{type:'checkbox',checked:allSelected,onChange:toggleAll}),
+          'Select all'
+        ),
       options.map(o=>ce('label',{key:o,style:{display:'flex',alignItems:'center',gap:6,padding:'4px 6px',
         fontSize:11,cursor:'pointer',color:'#1e293b',fontWeight:400,textTransform:'none',letterSpacing:'normal'}},
         ce('input',{type:'checkbox',checked:selected.includes(o),onChange:()=>toggle(o)}),
@@ -427,7 +435,18 @@ function GridTable({dates, sources, grid, title, onControls}){
 
   useEffect(function(){
     function onKey(e){
-      if((e.ctrlKey||e.metaKey) && (e.key==='c'||e.key==='C') && sel) doCopy();
+      if((e.ctrlKey||e.metaKey) && (e.key==='c'||e.key==='C') && sel){ doCopy(); return; }
+      const arrowDelta={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];
+      if(!arrowDelta || !sel) return;
+      if(['INPUT','SELECT','TEXTAREA'].includes((document.activeElement||{}).tagName)) return;
+      e.preventDefault();
+      const [dr,dc]=arrowDelta;
+      setSel(s=>{
+        if(!s) return s;
+        const r1=Math.max(0,Math.min(nRows-1, s.r1+dr));
+        const c1=Math.max(0,Math.min(nCols-1, s.c1+dc));
+        return e.shiftKey ? {...s, r1, c1} : {r0:r1,c0:c1,r1,c1};
+      });
     }
     function onMouseUp(){ endSel(); }
     document.addEventListener('keydown',onKey);
@@ -576,7 +595,7 @@ function OverviewTable({rows, onControls}){
       return [label, ...cols.map(col=>String(cellVal(dr.counts,col)))];
     })
   ];
-  const nCols=matrix[0].length;
+  const nRows=matrix.length, nCols=matrix[0].length;
 
   function inSel(r,c){
     if(!sel) return false;
@@ -603,7 +622,18 @@ function OverviewTable({rows, onControls}){
 
   useEffect(function(){
     function onKey(e){
-      if((e.ctrlKey||e.metaKey) && (e.key==='c'||e.key==='C') && sel) doCopy();
+      if((e.ctrlKey||e.metaKey) && (e.key==='c'||e.key==='C') && sel){ doCopy(); return; }
+      const arrowDelta={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];
+      if(!arrowDelta || !sel) return;
+      if(['INPUT','SELECT','TEXTAREA'].includes((document.activeElement||{}).tagName)) return;
+      e.preventDefault();
+      const [dr,dc]=arrowDelta;
+      setSel(s=>{
+        if(!s) return s;
+        const r1=Math.max(0,Math.min(nRows-1, s.r1+dr));
+        const c1=Math.max(0,Math.min(nCols-1, s.c1+dc));
+        return e.shiftKey ? {...s, r1, c1} : {r0:r1,c0:c1,r1,c1};
+      });
     }
     function onMouseUp(){ endSel(); }
     document.addEventListener('keydown',onKey);
