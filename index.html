@@ -387,9 +387,6 @@ function GridTable({dates, sources, grid, title, onControls}){
   const wrapRef=useRef(null);
   const [copied,setCopied]=useState(false);
 
-  if(!dates.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
-    ce('span',{className:'muted'},'No matching leads for the current filters.'));
-
   const colTotals={};
   for(const s of sources) colTotals[s]=dates.reduce((sum,d)=>sum+((grid[d]||{})[s]||0),0);
   const grandTotal=sources.reduce((s,c)=>s+colTotals[c],0);
@@ -465,6 +462,9 @@ function GridTable({dates, sources, grid, title, onControls}){
     }), content);
   }
 
+  if(!dates.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
+    ce('span',{className:'muted'},'No matching leads for the current filters.'));
+
   return ce('div',{ref:wrapRef},
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
@@ -528,9 +528,6 @@ function OverviewTable({rows, onControls}){
   const sources = useMemo(()=>sortSources(distinctSorted(rows,'source')),[rows]);
   const agg = useMemo(()=>buildBrandModelAgg(rows),[rows]);
   const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>sumSourceCounts(agg[b].total)-sumSourceCounts(agg[a].total)),[agg]);
-
-  if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
-    ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
   /* column model: one [source,'unique'/'duplicate'] pair per source,
      plus a trailing Total group with the same two kinds + a combined total */
@@ -652,6 +649,9 @@ function OverviewTable({rows, onControls}){
     return td(r,i+1,Nf(cellVal(counts,col)), Object.assign({},extra,
       col.kind==='duplicate'?{style:Object.assign({},(extra&&extra.style)||{},{background:'#FAF5FF'})}:{}));
   }
+
+  if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
+    ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
