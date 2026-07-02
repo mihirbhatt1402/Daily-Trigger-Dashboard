@@ -769,10 +769,30 @@ function ConfigModal({brand,brandRows,config,onSave,onClose}){
   function setEntry(key,field,val){ setEntries(e=>({...e,[key]:{...(e[key]||{}),[field]:val}})); }
   function handleSave(){
     setSaving(true); setErr('');
-    const timeout=new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('Save timed out. Check your internet connection and try again.')); },8000); });
-    Promise.race([onSave(brand,{level,entries}),timeout])
-      .then(function(){ setSaving(false); onClose(); })
-      .catch(function(e){ setSaving(false); setErr(e.message); });
+    console.log('[Save] clicked | brand:', brand, '| level:', level, '| entries:', JSON.stringify(entries));
+    /* Wrap onSave inside Promise.resolve().then() so any synchronous throw from
+       the Firestore SDK is converted to a rejected Promise — otherwise a sync
+       throw escapes Promise.race entirely and the spinner hangs forever. */
+    const saveP=Promise.resolve().then(function(){ return onSave(brand,{level,entries}); });
+    const timeout=new Promise(function(_,rej){
+      setTimeout(function(){ rej(new Error('Save timed out after 8 s. Check internet connection and Firestore rules.')); },8000);
+    });
+    Promise.race([saveP,timeout])
+      .then(function(){
+        console.log('[Save] SUCCESS');
+        setSaving(false); onClose();
+      })
+      .catch(function(e){
+        console.error('[Save] FAILED — code:', e.code, '| message:', e.message, '| stack:', e.stack);
+        setSaving(false);
+        /* Surface Firestore permission errors with actionable text */
+        const msg=e.code==='permission-denied'
+          ?'Permission denied. Ask the dashboard owner to add a Firestore rule allowing writes to users/{uid}.'
+          :e.code==='not-found'
+          ?'User document missing. Please sign out and back in, then retry.'
+          :e.message||String(e);
+        setErr(msg);
+      });
   }
   const keys=level==='brand'?['']:level==='model'?models:cams;
   const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
@@ -855,15 +875,25 @@ function SummaryTab({rows,isAdmin}){
   },[]);
 
   function saveConfig(brand,config){
-    /* Write to admin's own user doc using dot-notation update so other brands'
-       configs are not overwritten. Falls back to set+merge if doc doesn't exist. */
     const uid=fbAuth.currentUser&&fbAuth.currentUser.uid;
-    if(!uid) return Promise.reject(new Error('Not signed in.'));
+    console.log('[saveConfig] uid:', uid, '| brand:', brand, '| config:', JSON.stringify(config));
+    if(!uid) return Promise.reject(new Error('Not signed in — please refresh and sign in again.'));
     const ref=fbDb.collection('users').doc(uid);
-    return ref.update({'campaignConfigs.'+brand:config}).catch(function(e){
-      if(e.code==='not-found') return ref.set({campaignConfigs:{[brand]:config}},{merge:true});
-      throw e;
-    });
+    /* Use FieldPath instead of string dot-notation to safely handle brand names
+       that contain spaces or other special characters (e.g. "Royal Enfield"). */
+    const fp=new firebase.firestore.FieldPath('campaignConfigs',brand);
+    console.log('[saveConfig] calling ref.update() on users/'+uid);
+    return ref.update(fp,config)
+      .then(function(){ console.log('[saveConfig] update() resolved OK'); })
+      .catch(function(e){
+        console.warn('[saveConfig] update() rejected — code:', e.code, e.message);
+        if(e.code==='not-found'){
+          /* Document doesn't exist yet (shouldn't happen — created at sign-in) */
+          console.log('[saveConfig] doc not-found, falling back to set+merge');
+          return ref.set({campaignConfigs:{[brand]:config}},{merge:true});
+        }
+        throw e;
+      });
   }
 
   const brands=useMemo(function(){
