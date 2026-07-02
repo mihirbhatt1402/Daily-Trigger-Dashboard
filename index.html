@@ -794,7 +794,7 @@ function ConfigModal({brand,brandRows,config,onSave,onClose}){
         setErr(msg);
       });
   }
-  const keys=level==='brand'?['']:level==='model'?models:cams;
+  const keys=level==='brand'?['__brand__']:level==='model'?models:cams;
   const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
     fontSize:12,outline:'none',width:'100%'};
   const lvlBtns=[['brand','Brand'],['model','Model'],['cam','CAM Name']].map(([l,lbl],i,arr)=>
@@ -956,7 +956,7 @@ function SummaryTab({rows,isAdmin}){
       )];
     }
     if(lvl==='brand'){
-      const e=ent['']||{};
+      const e=ent['__brand__']||{};
       return [ce('tr',{key:brand+':b'},
         ce('td',{className:'label'},ce('span',{style:{fontWeight:700}},brand),editBtn(brand)),
         ce('td',null,e.target?Nf(Number(e.target)):'—'),
