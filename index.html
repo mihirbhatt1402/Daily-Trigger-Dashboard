@@ -768,7 +768,7 @@ function ConfigModal({brand,brandRows,config,onSave,onClose}){
   function setEntry(key,field,val){ setEntries(e=>({...e,[key]:{...(e[key]||{}),[field]:val}})); }
   function handleSave(){
     setSaving(true); setErr('');
-    const timeout=new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('Timed out — add campaign_configs rule in Firestore and republish.')); },8000); });
+    const timeout=new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('Save timed out. Check your internet connection and try again.')); },8000); });
     Promise.race([onSave(brand,{level,entries}),timeout])
       .then(function(){ setSaving(false); onClose(); })
       .catch(function(e){ setSaving(false); setErr(e.message); });
@@ -840,16 +840,16 @@ function SummaryTab({rows,isAdmin}){
   const [configuring,setConfiguring]=useState(null);
 
   useEffect(function(){
-    const unsub=fbDb.collection('campaign_configs').onSnapshot(function(snap){
-      const data={};
-      snap.docs.forEach(d=>{ data[d.id]=d.data(); });
-      setConfigs(data);
+    /* Store all brand configs in one doc inside the existing users collection
+       (already has write rules) rather than needing a new Firestore rule */
+    const unsub=fbDb.collection('users').doc('campaign_configs').onSnapshot(function(snap){
+      setConfigs(snap.exists?snap.data():{});
     });
     return unsub;
   },[]);
 
   function saveConfig(brand,config){
-    return fbDb.collection('campaign_configs').doc(brand).set(config);
+    return fbDb.collection('users').doc('campaign_configs').set({[brand]:config},{merge:true});
   }
 
   const brands=useMemo(function(){
