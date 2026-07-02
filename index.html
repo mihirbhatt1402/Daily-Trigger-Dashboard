@@ -234,6 +234,18 @@ function toISODate(s){
   return s;
 }
 
+/* ── HMSI model-based brand reclassification ─────────────────────── */
+const HMSI_BW_MODELS=['cb 350 rs','cb 350','hness cb 350'];
+const HMSI_RW_MODELS=['activa 6g','activa 125','shine 100 dx','shine 100','shine 125','shine','sp 125','cb 125 hornet'];
+function reclassifyHMSI(brand,model){
+  if(!/honda|hmsi/i.test(brand)) return brand;
+  /* normalise: lowercase, strip apostrophes/hyphens, collapse spaces */
+  const n=model.toLowerCase().trim().replace(/['’‘\-]/g,'').replace(/\s+/g,' ');
+  if(HMSI_BW_MODELS.some(m=>n===m)) return 'HMSI BW';
+  if(HMSI_RW_MODELS.some(m=>n===m)) return 'HMSI RW';
+  return brand;
+}
+
 /* ── Parse raw sheet rows into structured lead records ───────────── */
 function parseRows(raw){
   const out=[];
@@ -241,8 +253,8 @@ function parseRows(raw){
     const r=raw[i];
     const g=makeGetter(r);
     const idLead = g(['id_lead','id verified lead','id_verified_lead']);
-    const brand  = g('brand')||'Unknown';
     const model  = g('model')||'Unknown';
+    const brand  = reclassifyHMSI(g('brand')||'Unknown',model);
     const leadType = g(['lead_type','lead type'])||'Unknown';
     const source = g(['final_source','source'])||'Unknown';
     const city   = g(['verified_city','city'])||'Unknown';
@@ -742,37 +754,35 @@ function OverviewTable({rows, onControls}){
   );
 }
 
-/* ── Summary tab: per-brand run rates + campaign targets ─────────── */
-function BrandRow({brand,brandRows,campaigns,saveCampaign}){
-  const saved=campaigns[brand]||{};
+/* ── Summary tab: run rates + campaign targets (OEM / Model / CAM) ── */
+function SummaryRow({entityKey,label,entityRows,campaigns,saveCampaign}){
+  const saved=campaigns[entityKey]||{};
   const [target,setTarget]=useState(String(saved.target||''));
   const [endDate,setEndDate]=useState(saved.endDate||'');
-  /* sync when Firestore data arrives / changes */
   useEffect(function(){
     setTarget(String(saved.target||''));
     setEndDate(saved.endDate||'');
   },[saved.target,saved.endDate]);
-  const m=useMemo(function(){ return calcBrandMetrics(brandRows); },[brandRows]);
+  const m=useMemo(function(){ return calcBrandMetrics(entityRows); },[entityRows]);
   const today=isoToday();
   const numTarget=Number(target)||0;
   const daysLeft=endDate?Math.max(0,daysBetween(today,endDate)):null;
-  /* Required daily RR = remaining leads ÷ days left */
   const reqRR=(numTarget>0&&daysLeft>0)?Math.max(0,numTarget-m.totalUnique)/daysLeft:null;
   const onPace=reqRR!==null&&m.currentRR>=reqRR;
-  const inputBase={border:'1px solid var(--violet-200)',borderRadius:6,padding:'3px 8px',fontSize:11,outline:'none',fontFamily:"'DM Mono',monospace"};
+  const inp={border:'1px solid var(--violet-200)',borderRadius:6,padding:'3px 8px',fontSize:11,outline:'none',fontFamily:"'DM Mono',monospace"};
   return ce('tr',null,
-    ce('td',{className:'label',style:{fontWeight:700}},brand),
+    ce('td',{className:'label',style:{fontWeight:700}},label),
     ce('td',{style:{padding:'4px 8px'}},
       ce('input',{type:'number',value:target,min:0,
         onChange:e=>setTarget(e.target.value),
-        onBlur:function(){ saveCampaign(brand,'target',Number(target)||0); },
-        style:Object.assign({},inputBase,{width:100,textAlign:'right'}),placeholder:'—'})
+        onBlur:function(){ saveCampaign(entityKey,'target',Number(target)||0); },
+        style:Object.assign({},inp,{width:100,textAlign:'right'}),placeholder:'—'})
     ),
     ce('td',{style:{padding:'4px 8px'}},
       ce('input',{type:'date',value:endDate,
         onChange:e=>setEndDate(e.target.value),
-        onBlur:function(){ saveCampaign(brand,'endDate',endDate); },
-        style:Object.assign({},inputBase,{fontFamily:'inherit'})})
+        onBlur:function(){ saveCampaign(entityKey,'endDate',endDate); },
+        style:Object.assign({},inp,{fontFamily:'inherit'})})
     ),
     ce('td',null,Nf(m.totalUnique)),
     ce('td',null,m.daysElapsed+'d'),
@@ -786,50 +796,114 @@ function BrandRow({brand,brandRows,campaigns,saveCampaign}){
 }
 
 function SummaryTab({rows}){
+  const [level,setLevel]=useState('oem'); /* 'oem' | 'model' | 'cam' */
   const [campaigns,setCampaigns]=useState({});
+  const COLL={oem:'campaigns_oem',model:'campaigns_model',cam:'campaigns_cam'};
+
   useEffect(function(){
-    const unsub=fbDb.collection('campaigns').onSnapshot(function(snap){
+    const unsub=fbDb.collection(COLL[level]).onSnapshot(function(snap){
       const data={};
       snap.docs.forEach(d=>{ data[d.id]=d.data(); });
       setCampaigns(data);
     });
     return unsub;
-  },[]);
-  function saveCampaign(brand,field,value){
-    fbDb.collection('campaigns').doc(brand).set({[field]:value},{merge:true});
+  },[level]);
+
+  function saveCampaign(key,field,value){
+    fbDb.collection(COLL[level]).doc(key).set({[field]:value},{merge:true});
   }
-  /* sort brands by total unique leads desc */
-  const brands=useMemo(function(){
-    const counts={};
-    for(const r of rows) if(r.isUnique) counts[r.brand]=(counts[r.brand]||0)+1;
-    return Object.keys(counts).sort((a,b)=>(counts[b]||0)-(counts[a]||0));
-  },[rows]);
-  const byBrand=useMemo(function(){
-    const m={};
-    for(const r of rows){ if(!m[r.brand])m[r.brand]=[]; m[r.brand].push(r); }
-    return m;
-  },[rows]);
-  if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
-    ce('span',{className:'muted'},'No matching leads for the current filters.'));
-  return ce('div',{className:'card scroll-x fade-up'},
-    ce('table',null,
-      ce('thead',null,
-        ce('tr',null,
-          ce('th',{className:'left'},'Brand / Account'),
-          ce('th',null,'Lead Target'),
-          ce('th',null,'Campaign End Date'),
-          ce('th',null,'Unique Leads'),
-          ce('th',null,'Days Elapsed'),
-          ce('th',null,'Current Run Rate'),
-          ce('th',null,'Last 3D Avg RR'),
-          ce('th',null,'Req. Daily RR'),
-          ce('th',null,'Days Left')
-        )
-      ),
-      ce('tbody',null,
-        brands.map(function(brand){
-          return ce(BrandRow,{key:brand,brand,brandRows:byBrand[brand]||[],campaigns,saveCampaign});
+
+  const {entities,byKey,colLabel}=useMemo(function(){
+    if(level==='oem'){
+      const counts={};
+      const byKey={};
+      for(const r of rows){
+        if(r.isUnique) counts[r.brand]=(counts[r.brand]||0)+1;
+        if(!byKey[r.brand]) byKey[r.brand]=[];
+        byKey[r.brand].push(r);
+      }
+      const ents=Object.keys(counts)
+        .sort((a,b)=>(counts[b]||0)-(counts[a]||0))
+        .map(b=>({key:b,label:b}));
+      return {entities:ents,byKey,colLabel:'Brand / Account'};
+    }
+    if(level==='model'){
+      const counts={};
+      const brandTotals={};
+      const byKey={};
+      for(const r of rows){
+        const k=r.brand+'||'+r.model;
+        if(r.isUnique){ counts[k]=(counts[k]||0)+1; brandTotals[r.brand]=(brandTotals[r.brand]||0)+1; }
+        if(!byKey[k]) byKey[k]=[];
+        byKey[k].push(r);
+      }
+      const ents=Object.keys(counts)
+        .sort((a,b)=>{
+          const [ba]=a.split('||'); const [bb]=b.split('||');
+          if(ba!==bb) return (brandTotals[bb]||0)-(brandTotals[ba]||0);
+          return (counts[b]||0)-(counts[a]||0);
         })
+        .map(k=>{ const [brand,model]=k.split('||'); return {key:k,label:brand+' → '+model}; });
+      return {entities:ents,byKey,colLabel:'Brand → Model'};
+    }
+    /* cam */
+    const counts={};
+    const byKey={};
+    for(const r of rows){
+      if(r.isUnique) counts[r.camName]=(counts[r.camName]||0)+1;
+      if(!byKey[r.camName]) byKey[r.camName]=[];
+      byKey[r.camName].push(r);
+    }
+    const ents=Object.keys(counts)
+      .sort((a,b)=>(counts[b]||0)-(counts[a]||0))
+      .map(c=>({key:c,label:c}));
+    return {entities:ents,byKey,colLabel:'CAM Name'};
+  },[rows,level]);
+
+  function lvlBtn(l,lbl,pos){
+    const radius=pos==='L'?'20px 0 0 20px':pos==='R'?'0 20px 20px 0':'0';
+    return ce('button',{type:'button',onClick:()=>setLevel(l),
+      style:{padding:'5px 14px',fontSize:11,fontWeight:600,fontFamily:'inherit',
+        border:'1px solid var(--violet-200)',borderLeft:pos==='L'?'1px solid var(--violet-200)':'none',
+        borderRadius:radius,cursor:'pointer',
+        background:level===l?'linear-gradient(135deg,var(--violet),var(--pink))':'#fff',
+        color:level===l?'#fff':'var(--violet-d)'}},lbl);
+  }
+
+  if(!entities.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
+    ce('span',{className:'muted'},'No matching leads for the current filters.'));
+
+  return ce('div',{className:'fade-up'},
+    ce('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:12}},
+      ce('span',{style:{fontSize:11,fontWeight:700,color:'var(--violet-900)',
+        textTransform:'uppercase',letterSpacing:'.07em'}},'Target Level'),
+      ce('div',{style:{display:'flex'}},
+        lvlBtn('oem','OEM','L'),
+        lvlBtn('model','Model','M'),
+        lvlBtn('cam','CAM Name','R')
+      )
+    ),
+    ce('div',{className:'card scroll-x'},
+      ce('table',null,
+        ce('thead',null,
+          ce('tr',null,
+            ce('th',{className:'left'},colLabel),
+            ce('th',null,'Lead Target'),
+            ce('th',null,'Campaign End Date'),
+            ce('th',null,'Unique Leads'),
+            ce('th',null,'Days Elapsed'),
+            ce('th',null,'Current Run Rate'),
+            ce('th',null,'Last 3D Avg RR'),
+            ce('th',null,'Req. Daily RR'),
+            ce('th',null,'Days Left')
+          )
+        ),
+        ce('tbody',null,
+          entities.map(function(e){
+            return ce(SummaryRow,{key:e.key,entityKey:e.key,label:e.label,
+              entityRows:byKey[e.key]||[],campaigns,saveCampaign});
+          })
+        )
       )
     )
   );
