@@ -182,12 +182,13 @@ function calcBrandMetrics(brandRows){
   const uniqueRows=brandRows.filter(r=>r.isUnique);
   const totalUnique=uniqueRows.length;
   const dates=[...new Set(brandRows.map(r=>r.date))].sort();
-  const today=isoToday();
-  const firstDate=dates[0]||today;
-  /* Current RR = total unique / calendar days from first-data-date to today (inclusive) */
-  const daysElapsed=Math.max(1,daysBetween(firstDate,today)+1);
+  /* Data is always till D-1 (yesterday). Use actual data date range — not today —
+     so daysElapsed and currentRR are consistent with the last-3D avg. */
+  const firstDate=dates[0]||isoToday();
+  const lastDate=dates[dates.length-1]||firstDate;
+  const daysElapsed=Math.max(1,daysBetween(firstDate,lastDate)+1);
   const currentRR=totalUnique/daysElapsed;
-  /* Last-3D avg = sum unique on last 3 dates in data ÷ 3 */
+  /* Last-3D avg = unique leads on last 3 data-dates ÷ number of those dates */
   const last3Dates=dates.slice(-3);
   const last3Unique=last3Dates.length
     ?uniqueRows.filter(r=>last3Dates.includes(r.date)).length/last3Dates.length:0;
@@ -915,7 +916,8 @@ function SummaryTab({rows,isAdmin}){
     const m=calcBrandMetrics(entityRows);
     const numT=Number((entry||{}).target)||0;
     const ed=(entry||{}).endDate||'';
-    const rawDl=ed?daysBetween(today,ed):null;
+    /* +1 so both today and the campaign end date are counted as active days */
+    const rawDl=ed?daysBetween(today,ed)+1:null;
     const dl=rawDl!==null?Math.max(0,rawDl):null;
     const expired=rawDl!==null&&rawDl<0;
     const rr=(numT>0&&dl>0)?Math.max(0,numT-m.totalUnique)/dl:null;
