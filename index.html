@@ -241,9 +241,12 @@ const HMSI_BW_SLUGS=['cb350rs','cb350','hnesscb350'];          /* CB 350 RS firs
 const HMSI_RW_SLUGS=['activa6g','activa125','shine100dx','shine100','shine125','shine','sp125','cb125hornet'];
 function reclassifyHMSI(brand,model){
   if(!/honda|hmsi/i.test(brand)) return brand;
-  const n=slugify(model);
+  /* Sheet stores model names like "Honda CB350" — strip leading brand prefix */
+  let n=slugify(model);
+  if(n.startsWith('honda')) n=n.slice(5);
+  if(n.startsWith('hmsi')) n=n.slice(4);
   if(HMSI_BW_SLUGS.some(m=>n===m)) return 'HMSI BW';
-  return 'HMSI RW'; /* all other Honda/HMSI models default to HMSI RW */
+  return 'HMSI RW';
 }
 
 /* ── Parse raw sheet rows into structured lead records ───────────── */
