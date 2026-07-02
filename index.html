@@ -970,6 +970,10 @@ function SummaryTab({rows,isAdmin}){
     const subKeys=isModel
       ?[...new Set(br.map(r=>r.model))].filter(Boolean).sort()
       :[...new Set(br.map(r=>r.camName))].filter(Boolean).sort();
+    /* Totals for the brand: sum of all sub-targets, latest end date, all-brand rows */
+    const totalTarget=subKeys.reduce((s,k)=>s+(Number((ent[k]||{}).target)||0),0);
+    const latestEnd=subKeys.reduce((mx,k)=>{ const ed=(ent[k]||{}).endDate||''; return ed>mx?ed:mx; },'');
+    const totalEntry={target:String(totalTarget),endDate:latestEnd};
     return [
       ce('tr',{key:brand+':hdr'},
         ce('td',{className:'label',colSpan:9,
@@ -988,7 +992,14 @@ function SummaryTab({rows,isAdmin}){
           ce('td',null,e.endDate?formatDateDMY(e.endDate):'—'),
           ...kpiCells(subR,e)
         );
-      })
+      }),
+      /* Totals row — summed target, latest end date, all brand rows for metrics */
+      ce('tr',{key:brand+':total',className:'total-row'},
+        ce('td',{className:'label',style:{paddingLeft:22}},brand+' Total'),
+        ce('td',null,totalTarget?Nf(totalTarget):'—'),
+        ce('td',null,latestEnd?formatDateDMY(latestEnd):'—'),
+        ...kpiCells(br,totalEntry)
+      )
     ];
   }
 
