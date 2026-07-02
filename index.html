@@ -175,6 +175,24 @@ function formatDateDMY(iso){
   const m=String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m?m[3]+'-'+m[2]+'-'+m[1]:iso;
 }
+function isoToday(){ return new Date().toISOString().slice(0,10); }
+function daysBetween(isoA,isoB){ return Math.round((new Date(isoB)-new Date(isoA))/86400000); }
+/* metrics used by Summary tab — all on unique leads only */
+function calcBrandMetrics(brandRows){
+  const uniqueRows=brandRows.filter(r=>r.isUnique);
+  const totalUnique=uniqueRows.length;
+  const dates=[...new Set(brandRows.map(r=>r.date))].sort();
+  const today=isoToday();
+  const firstDate=dates[0]||today;
+  /* Current RR = total unique / calendar days from first-data-date to today (inclusive) */
+  const daysElapsed=Math.max(1,daysBetween(firstDate,today)+1);
+  const currentRR=totalUnique/daysElapsed;
+  /* Last-3D avg = sum unique on last 3 dates in data ÷ 3 */
+  const last3Dates=dates.slice(-3);
+  const last3Unique=last3Dates.length
+    ?uniqueRows.filter(r=>last3Dates.includes(r.date)).length/last3Dates.length:0;
+  return {totalUnique,daysElapsed,currentRR,last3RR:last3Unique};
+}
 
 /* ── Flexible column getter ──────────────────────────────────────── */
 function makeGetter(row){
@@ -724,6 +742,99 @@ function OverviewTable({rows, onControls}){
   );
 }
 
+/* ── Summary tab: per-brand run rates + campaign targets ─────────── */
+function BrandRow({brand,brandRows,campaigns,saveCampaign}){
+  const saved=campaigns[brand]||{};
+  const [target,setTarget]=useState(String(saved.target||''));
+  const [endDate,setEndDate]=useState(saved.endDate||'');
+  /* sync when Firestore data arrives / changes */
+  useEffect(function(){
+    setTarget(String(saved.target||''));
+    setEndDate(saved.endDate||'');
+  },[saved.target,saved.endDate]);
+  const m=useMemo(function(){ return calcBrandMetrics(brandRows); },[brandRows]);
+  const today=isoToday();
+  const numTarget=Number(target)||0;
+  const daysLeft=endDate?Math.max(0,daysBetween(today,endDate)):null;
+  /* Required daily RR = remaining leads ÷ days left */
+  const reqRR=(numTarget>0&&daysLeft>0)?Math.max(0,numTarget-m.totalUnique)/daysLeft:null;
+  const onPace=reqRR!==null&&m.currentRR>=reqRR;
+  const inputBase={border:'1px solid var(--violet-200)',borderRadius:6,padding:'3px 8px',fontSize:11,outline:'none',fontFamily:"'DM Mono',monospace"};
+  return ce('tr',null,
+    ce('td',{className:'label',style:{fontWeight:700}},brand),
+    ce('td',{style:{padding:'4px 8px'}},
+      ce('input',{type:'number',value:target,min:0,
+        onChange:e=>setTarget(e.target.value),
+        onBlur:function(){ saveCampaign(brand,'target',Number(target)||0); },
+        style:Object.assign({},inputBase,{width:100,textAlign:'right'}),placeholder:'—'})
+    ),
+    ce('td',{style:{padding:'4px 8px'}},
+      ce('input',{type:'date',value:endDate,
+        onChange:e=>setEndDate(e.target.value),
+        onBlur:function(){ saveCampaign(brand,'endDate',endDate); },
+        style:Object.assign({},inputBase,{fontFamily:'inherit'})})
+    ),
+    ce('td',null,Nf(m.totalUnique)),
+    ce('td',null,m.daysElapsed+'d'),
+    ce('td',null,m.currentRR.toFixed(1)+'/d'),
+    ce('td',null,m.last3RR.toFixed(1)+'/d'),
+    ce('td',{style:reqRR!==null?{color:onPace?'#065F46':'#9A3412',fontWeight:700}:{}},
+      reqRR!==null?reqRR.toFixed(1)+'/d':'—'),
+    ce('td',{style:daysLeft!==null&&daysLeft<=3?{color:'#9A3412',fontWeight:700}:{}},
+      daysLeft!==null?daysLeft+'d':'—')
+  );
+}
+
+function SummaryTab({rows}){
+  const [campaigns,setCampaigns]=useState({});
+  useEffect(function(){
+    const unsub=fbDb.collection('campaigns').onSnapshot(function(snap){
+      const data={};
+      snap.docs.forEach(d=>{ data[d.id]=d.data(); });
+      setCampaigns(data);
+    });
+    return unsub;
+  },[]);
+  function saveCampaign(brand,field,value){
+    fbDb.collection('campaigns').doc(brand).set({[field]:value},{merge:true});
+  }
+  /* sort brands by total unique leads desc */
+  const brands=useMemo(function(){
+    const counts={};
+    for(const r of rows) if(r.isUnique) counts[r.brand]=(counts[r.brand]||0)+1;
+    return Object.keys(counts).sort((a,b)=>(counts[b]||0)-(counts[a]||0));
+  },[rows]);
+  const byBrand=useMemo(function(){
+    const m={};
+    for(const r of rows){ if(!m[r.brand])m[r.brand]=[]; m[r.brand].push(r); }
+    return m;
+  },[rows]);
+  if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
+    ce('span',{className:'muted'},'No matching leads for the current filters.'));
+  return ce('div',{className:'card scroll-x fade-up'},
+    ce('table',null,
+      ce('thead',null,
+        ce('tr',null,
+          ce('th',{className:'left'},'Brand / Account'),
+          ce('th',null,'Lead Target'),
+          ce('th',null,'Campaign End Date'),
+          ce('th',null,'Unique Leads'),
+          ce('th',null,'Days Elapsed'),
+          ce('th',null,'Current Run Rate'),
+          ce('th',null,'Last 3D Avg RR'),
+          ce('th',null,'Req. Daily RR'),
+          ce('th',null,'Days Left')
+        )
+      ),
+      ce('tbody',null,
+        brands.map(function(brand){
+          return ce(BrandRow,{key:brand,brand,brandRows:byBrand[brand]||[],campaigns,saveCampaign});
+        })
+      )
+    )
+  );
+}
+
 /* ── Main App ─────────────────────────────────────────────────────── */
 function App({topBar}){
   const [rows,setRows]=useState([]);
@@ -801,13 +912,16 @@ function App({topBar}){
       ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,
         borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8}},
         ce('div',{style:{display:'flex',gap:4}},
+          ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Summary'),
           ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
           ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate')
         ),
-        tableControls?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
+        (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
       ),
+      tab==='summary'?
+        ce(SummaryTab,{rows:filtered}):
       tab==='overview'?
         ce(OverviewTable,{rows:filtered, onControls:setTableControls}):
       tab==='trigger'?
