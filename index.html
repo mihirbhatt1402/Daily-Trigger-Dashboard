@@ -758,13 +758,20 @@ function OverviewTable({rows, onControls}){
 }
 
 /* ── Target-config modal (admin only) ────────────────────────────── */
-function ConfigModal({brand,brandRows,config,saveErr,onSave,onClose}){
+function ConfigModal({brand,brandRows,config,onSave,onClose}){
   const [level,setLevel]=useState((config&&config.level)||'brand');
   const [entries,setEntries]=useState((config&&config.entries)||{});
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState('');
   const models=useMemo(()=>[...new Set(brandRows.map(r=>r.model))].filter(Boolean).sort(),[brandRows]);
   const cams=useMemo(()=>[...new Set(brandRows.map(r=>r.camName))].filter(Boolean).sort(),[brandRows]);
   function setEntry(key,field,val){ setEntries(e=>({...e,[key]:{...(e[key]||{}),[field]:val}})); }
-  function handleSave(){ onSave(brand,{level,entries}); onClose(); }
+  function handleSave(){
+    setSaving(true); setErr('');
+    onSave(brand,{level,entries})
+      .then(function(){ setSaving(false); onClose(); })
+      .catch(function(e){ setSaving(false); setErr('Save failed: '+e.message); });
+  }
   const keys=level==='brand'?['']:level==='model'?models:cams;
   const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
     fontSize:12,outline:'none',width:'100%'};
@@ -816,10 +823,11 @@ function ConfigModal({brand,brandRows,config,saveErr,onSave,onClose}){
           );
         })
       ),
-      saveErr?ce('div',{className:'err-box',style:{marginBottom:10}},saveErr):null,
+      err?ce('div',{className:'err-box',style:{marginBottom:10}},err):null,
       ce('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
-        ce('button',{className:'btn',onClick:onClose},'Cancel'),
-        ce('button',{className:'btn btn-primary',onClick:handleSave},'Save targets')
+        ce('button',{className:'btn',onClick:onClose,disabled:saving},'Cancel'),
+        ce('button',{className:'btn btn-primary',onClick:handleSave,disabled:saving},
+          saving?ce('span',{className:'spinner'}):null,saving?' Saving…':'Save targets')
       )
     )
   );
@@ -839,11 +847,8 @@ function SummaryTab({rows,isAdmin}){
     return unsub;
   },[]);
 
-  const [saveErr,setSaveErr]=useState('');
   function saveConfig(brand,config){
-    fbDb.collection('campaign_configs').doc(brand).set(config)
-      .then(()=>setSaveErr(''))
-      .catch(e=>setSaveErr('Save failed: '+e.message));
+    return fbDb.collection('campaign_configs').doc(brand).set(config);
   }
 
   const brands=useMemo(function(){
@@ -942,10 +947,9 @@ function SummaryTab({rows,isAdmin}){
   return ce('div',{className:'fade-up'},
     configuring?ce(ConfigModal,{
       brand:configuring,brandRows:byBrand[configuring]||[],
-      config:configs[configuring],saveErr,
-      onSave:saveConfig,onClose:()=>{setConfiguring(null);setSaveErr('');}
+      config:configs[configuring],
+      onSave:saveConfig,onClose:()=>setConfiguring(null)
     }):null,
-    saveErr&&!configuring?ce('div',{className:'err-box',style:{marginBottom:12}},saveErr):null,
     ce('div',{className:'card scroll-x'},
       ce('table',null,
         ce('thead',null,
