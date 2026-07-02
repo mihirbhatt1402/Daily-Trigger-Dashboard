@@ -768,9 +768,10 @@ function ConfigModal({brand,brandRows,config,onSave,onClose}){
   function setEntry(key,field,val){ setEntries(e=>({...e,[key]:{...(e[key]||{}),[field]:val}})); }
   function handleSave(){
     setSaving(true); setErr('');
-    onSave(brand,{level,entries})
+    const timeout=new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('Timed out — add campaign_configs rule in Firestore and republish.')); },8000); });
+    Promise.race([onSave(brand,{level,entries}),timeout])
       .then(function(){ setSaving(false); onClose(); })
-      .catch(function(e){ setSaving(false); setErr('Save failed: '+e.message); });
+      .catch(function(e){ setSaving(false); setErr(e.message); });
   }
   const keys=level==='brand'?['']:level==='model'?models:cams;
   const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
