@@ -754,163 +754,210 @@ function OverviewTable({rows, onControls}){
   );
 }
 
-/* ── Summary tab: run rates + campaign targets (OEM / Model / CAM) ── */
-function SummaryRow({entityKey,label,entityRows,campaigns,saveCampaign}){
-  const saved=campaigns[entityKey]||{};
-  const [target,setTarget]=useState(String(saved.target||''));
-  const [endDate,setEndDate]=useState(saved.endDate||'');
-  useEffect(function(){
-    setTarget(String(saved.target||''));
-    setEndDate(saved.endDate||'');
-  },[saved.target,saved.endDate]);
-  const m=useMemo(function(){ return calcBrandMetrics(entityRows); },[entityRows]);
-  const today=isoToday();
-  const numTarget=Number(target)||0;
-  const daysLeft=endDate?Math.max(0,daysBetween(today,endDate)):null;
-  const reqRR=(numTarget>0&&daysLeft>0)?Math.max(0,numTarget-m.totalUnique)/daysLeft:null;
-  const onPace=reqRR!==null&&m.currentRR>=reqRR;
-  const inp={border:'1px solid var(--violet-200)',borderRadius:6,padding:'3px 8px',fontSize:11,outline:'none',fontFamily:"'DM Mono',monospace"};
-  return ce('tr',null,
-    ce('td',{className:'label',style:{fontWeight:700}},label),
-    ce('td',{style:{padding:'4px 8px'}},
-      ce('input',{type:'number',value:target,min:0,
-        onChange:e=>setTarget(e.target.value),
-        onBlur:function(){ saveCampaign(entityKey,'target',Number(target)||0); },
-        style:Object.assign({},inp,{width:100,textAlign:'right'}),placeholder:'—'})
-    ),
-    ce('td',{style:{padding:'4px 8px'}},
-      ce('input',{type:'date',value:endDate,
-        onChange:e=>setEndDate(e.target.value),
-        onBlur:function(){ saveCampaign(entityKey,'endDate',endDate); },
-        style:Object.assign({},inp,{fontFamily:'inherit'})})
-    ),
-    ce('td',null,Nf(m.totalUnique)),
-    ce('td',null,m.daysElapsed+'d'),
-    ce('td',null,m.currentRR.toFixed(1)+'/d'),
-    ce('td',null,m.last3RR.toFixed(1)+'/d'),
-    ce('td',{style:reqRR!==null?{color:onPace?'#065F46':'#9A3412',fontWeight:700}:{}},
-      reqRR!==null?reqRR.toFixed(1)+'/d':'—'),
-    ce('td',{style:daysLeft!==null&&daysLeft<=3?{color:'#9A3412',fontWeight:700}:{}},
-      daysLeft!==null?daysLeft+'d':'—')
+/* ── Target-config modal (admin only) ────────────────────────────── */
+function ConfigModal({brand,brandRows,config,onSave,onClose}){
+  const [level,setLevel]=useState((config&&config.level)||'brand');
+  const [entries,setEntries]=useState((config&&config.entries)||{});
+  const models=useMemo(()=>[...new Set(brandRows.map(r=>r.model))].filter(Boolean).sort(),[brandRows]);
+  const cams=useMemo(()=>[...new Set(brandRows.map(r=>r.camName))].filter(Boolean).sort(),[brandRows]);
+  function setEntry(key,field,val){ setEntries(e=>({...e,[key]:{...(e[key]||{}),[field]:val}})); }
+  function handleSave(){ onSave(brand,{level,entries}); onClose(); }
+  const keys=level==='brand'?['']:level==='model'?models:cams;
+  const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
+    fontSize:12,outline:'none',width:'100%'};
+  const lvlBtns=[['brand','Brand'],['model','Model'],['cam','CAM Name']].map(([l,lbl],i,arr)=>
+    ce('button',{key:l,type:'button',onClick:()=>setLevel(l),
+      style:{padding:'7px 18px',fontSize:11,fontWeight:600,fontFamily:'inherit',
+        border:'1px solid var(--violet-200)',borderLeft:i===0?undefined:'none',
+        borderRadius:i===0?'8px 0 0 8px':i===arr.length-1?'0 8px 8px 0':'0',
+        cursor:'pointer',
+        background:level===l?'linear-gradient(135deg,var(--violet),var(--pink))':'#fff',
+        color:level===l?'#fff':'var(--violet-d)'}},lbl)
+  );
+  const gridCols=level==='brand'?'1fr 130px 160px':'180px 130px 160px';
+  return ce('div',{style:{position:'fixed',top:0,left:0,right:0,bottom:0,
+    background:'rgba(30,27,46,.5)',backdropFilter:'blur(4px)',
+    zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center'}},
+    ce('div',{style:{background:'#fff',borderRadius:16,padding:28,maxWidth:580,
+      width:'92%',maxHeight:'82vh',overflowY:'auto',
+      boxShadow:'0 8px 40px rgba(76,29,149,.22)',border:'1px solid var(--violet-100)'}},
+      ce('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:18}},
+        ce('h2',{style:{fontSize:15,fontWeight:700,color:'#1e1b2e'}},'Set Target — '+brand),
+        ce('button',{className:'btn',style:{fontSize:11,padding:'4px 12px'},onClick:onClose},'✕')
+      ),
+      ce('div',{style:{marginBottom:20}},
+        ce('div',{style:{fontSize:10,fontWeight:700,color:'var(--violet-900)',marginBottom:8,
+          textTransform:'uppercase',letterSpacing:'.08em'}},'Track targets at'),
+        ce('div',{style:{display:'flex'}},lvlBtns)
+      ),
+      ce('div',{style:{marginBottom:20}},
+        ce('div',{style:{display:'grid',gridTemplateColumns:gridCols,gap:'4px 10px',
+          alignItems:'center',marginBottom:8,paddingBottom:6,borderBottom:'2px solid var(--violet-200)'}},
+          level!=='brand'?ce('div',{style:{fontSize:9,fontWeight:700,color:'var(--violet-900)',
+            textTransform:'uppercase',letterSpacing:'.07em'}},level==='model'?'Model':'CAM Name'):null,
+          ce('div',{style:{fontSize:9,fontWeight:700,color:'var(--violet-900)',textTransform:'uppercase',letterSpacing:'.07em'}},'Lead Target'),
+          ce('div',{style:{fontSize:9,fontWeight:700,color:'var(--violet-900)',textTransform:'uppercase',letterSpacing:'.07em'}},'Campaign End Date')
+        ),
+        keys.map(function(key){
+          const entry=entries[key]||{};
+          return ce('div',{key:key||'__brand',
+            style:{display:'grid',gridTemplateColumns:gridCols,gap:'4px 10px',
+              alignItems:'center',padding:'8px 0',borderBottom:'1px solid var(--violet-100)'}},
+            level!=='brand'?ce('div',{style:{fontSize:12,fontWeight:500,color:'#1e1b2e'}},key):null,
+            ce('input',{type:'number',min:0,value:entry.target||'',
+              onChange:e=>setEntry(key,'target',e.target.value),placeholder:'—',
+              style:Object.assign({},iStyle,{fontFamily:"'DM Mono',monospace",textAlign:'right'})}),
+            ce('input',{type:'date',value:entry.endDate||'',
+              onChange:e=>setEntry(key,'endDate',e.target.value),
+              style:iStyle})
+          );
+        })
+      ),
+      ce('div',{style:{display:'flex',gap:8,justifyContent:'flex-end'}},
+        ce('button',{className:'btn',onClick:onClose},'Cancel'),
+        ce('button',{className:'btn btn-primary',onClick:handleSave},'Save targets')
+      )
+    )
   );
 }
 
-function SummaryTab({rows}){
-  const [level,setLevel]=useState('oem'); /* 'oem' | 'model' | 'cam' */
-  const [campaigns,setCampaigns]=useState({});
-  const COLL={oem:'campaigns_oem',model:'campaigns_model',cam:'campaigns_cam'};
+/* ── Summary tab: per-brand KPI tracking with per-brand target config ─ */
+function SummaryTab({rows,isAdmin}){
+  const [configs,setConfigs]=useState({});
+  const [configuring,setConfiguring]=useState(null);
 
   useEffect(function(){
-    const unsub=fbDb.collection(COLL[level]).onSnapshot(function(snap){
+    const unsub=fbDb.collection('campaign_configs').onSnapshot(function(snap){
       const data={};
       snap.docs.forEach(d=>{ data[d.id]=d.data(); });
-      setCampaigns(data);
+      setConfigs(data);
     });
     return unsub;
-  },[level]);
+  },[]);
 
-  function saveCampaign(key,field,value){
-    fbDb.collection(COLL[level]).doc(key).set({[field]:value},{merge:true});
-  }
+  function saveConfig(brand,config){ fbDb.collection('campaign_configs').doc(brand).set(config); }
 
-  const {entities,byKey,colLabel}=useMemo(function(){
-    if(level==='oem'){
-      const counts={};
-      const byKey={};
-      for(const r of rows){
-        if(r.isUnique) counts[r.brand]=(counts[r.brand]||0)+1;
-        if(!byKey[r.brand]) byKey[r.brand]=[];
-        byKey[r.brand].push(r);
-      }
-      const ents=Object.keys(counts)
-        .sort((a,b)=>(counts[b]||0)-(counts[a]||0))
-        .map(b=>({key:b,label:b}));
-      return {entities:ents,byKey,colLabel:'Brand / Account'};
-    }
-    if(level==='model'){
-      const counts={};
-      const brandTotals={};
-      const byKey={};
-      for(const r of rows){
-        const k=r.brand+'||'+r.model;
-        if(r.isUnique){ counts[k]=(counts[k]||0)+1; brandTotals[r.brand]=(brandTotals[r.brand]||0)+1; }
-        if(!byKey[k]) byKey[k]=[];
-        byKey[k].push(r);
-      }
-      const ents=Object.keys(counts)
-        .sort((a,b)=>{
-          const [ba]=a.split('||'); const [bb]=b.split('||');
-          if(ba!==bb) return (brandTotals[bb]||0)-(brandTotals[ba]||0);
-          return (counts[b]||0)-(counts[a]||0);
-        })
-        .map(k=>{ const [brand,model]=k.split('||'); return {key:k,label:brand+' → '+model}; });
-      return {entities:ents,byKey,colLabel:'Brand → Model'};
-    }
-    /* cam */
+  const brands=useMemo(function(){
     const counts={};
-    const byKey={};
-    for(const r of rows){
-      if(r.isUnique) counts[r.camName]=(counts[r.camName]||0)+1;
-      if(!byKey[r.camName]) byKey[r.camName]=[];
-      byKey[r.camName].push(r);
-    }
-    const ents=Object.keys(counts)
-      .sort((a,b)=>(counts[b]||0)-(counts[a]||0))
-      .map(c=>({key:c,label:c}));
-    return {entities:ents,byKey,colLabel:'CAM Name'};
-  },[rows,level]);
+    for(const r of rows) if(r.isUnique) counts[r.brand]=(counts[r.brand]||0)+1;
+    return Object.keys(counts).sort((a,b)=>(counts[b]||0)-(counts[a]||0));
+  },[rows]);
 
-  function lvlBtn(l,lbl,pos){
-    const radius=pos==='L'?'20px 0 0 20px':pos==='R'?'0 20px 20px 0':'0';
-    return ce('button',{type:'button',onClick:()=>setLevel(l),
-      style:{padding:'5px 14px',fontSize:11,fontWeight:600,fontFamily:'inherit',
-        border:'1px solid var(--violet-200)',borderLeft:pos==='L'?'1px solid var(--violet-200)':'none',
-        borderRadius:radius,cursor:'pointer',
-        background:level===l?'linear-gradient(135deg,var(--violet),var(--pink))':'#fff',
-        color:level===l?'#fff':'var(--violet-d)'}},lbl);
+  const byBrand=useMemo(function(){
+    const m={};
+    for(const r of rows){ if(!m[r.brand])m[r.brand]=[]; m[r.brand].push(r); }
+    return m;
+  },[rows]);
+
+  const today=isoToday();
+
+  /* Returns 6 <td> elements: unique, elapsed, current RR, 3D avg, req RR, days left */
+  function kpiCells(entityRows,entry){
+    const m=calcBrandMetrics(entityRows);
+    const numT=Number((entry||{}).target)||0;
+    const ed=(entry||{}).endDate||'';
+    const dl=ed?Math.max(0,daysBetween(today,ed)):null;
+    const rr=(numT>0&&dl>0)?Math.max(0,numT-m.totalUnique)/dl:null;
+    const onP=rr!==null&&m.currentRR>=rr;
+    return [
+      ce('td',{key:'u'},Nf(m.totalUnique)),
+      ce('td',{key:'e'},m.daysElapsed+'d'),
+      ce('td',{key:'c'},m.currentRR.toFixed(1)+'/d'),
+      ce('td',{key:'l'},m.last3RR.toFixed(1)+'/d'),
+      ce('td',{key:'r',style:rr!==null?{color:onP?'#065F46':'#9A3412',fontWeight:700}:{}},rr!==null?rr.toFixed(1)+'/d':'—'),
+      ce('td',{key:'d',style:dl!==null&&dl<=3?{color:'#9A3412',fontWeight:700}:{}},dl!==null?dl+'d':'—')
+    ];
   }
 
-  if(!entities.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
+  function editBtn(brand){
+    if(!isAdmin) return null;
+    const has=!!(configs[brand]&&configs[brand].level);
+    return ce('button',{type:'button',onClick:()=>setConfiguring(brand),
+      style:{marginLeft:8,fontSize:10,padding:'2px 8px',border:'1px solid var(--violet-200)',
+        borderRadius:10,background:'none',cursor:'pointer',color:'var(--violet-d)',
+        fontFamily:'inherit',verticalAlign:'middle'}},
+      has?'✎ Edit':'+ Set target');
+  }
+
+  /* Returns array of <tr> elements for this brand */
+  function renderBrand(brand){
+    const br=byBrand[brand]||[];
+    const cfg=configs[brand]||{};
+    const lvl=cfg.level;
+    const ent=cfg.entries||{};
+
+    if(!lvl){
+      return [ce('tr',{key:brand+':nc'},
+        ce('td',{className:'label'},ce('span',{style:{fontWeight:700}},brand),editBtn(brand)),
+        ce('td',null,'—'),ce('td',null,'—'),...kpiCells(br,{})
+      )];
+    }
+    if(lvl==='brand'){
+      const e=ent['']||{};
+      return [ce('tr',{key:brand+':b'},
+        ce('td',{className:'label'},ce('span',{style:{fontWeight:700}},brand),editBtn(brand)),
+        ce('td',null,e.target?Nf(Number(e.target)):'—'),
+        ce('td',null,e.endDate?formatDateDMY(e.endDate):'—'),
+        ...kpiCells(br,e)
+      )];
+    }
+    const isModel=lvl==='model';
+    const subKeys=isModel
+      ?[...new Set(br.map(r=>r.model))].filter(Boolean).sort()
+      :[...new Set(br.map(r=>r.camName))].filter(Boolean).sort();
+    return [
+      ce('tr',{key:brand+':hdr'},
+        ce('td',{className:'label',colSpan:9,
+          style:{background:'var(--violet-50)',color:'var(--violet-900)',fontWeight:700,fontStyle:'italic',
+            borderBottom:'2px solid var(--violet-200)'}},
+          brand+' — '+(isModel?'Model targets':'CAM targets'),
+          editBtn(brand)
+        )
+      ),
+      ...subKeys.map(function(key){
+        const subR=isModel?br.filter(r=>r.model===key):br.filter(r=>r.camName===key);
+        const e=ent[key]||{};
+        return ce('tr',{key:brand+'|'+key},
+          ce('td',{className:'label',style:{paddingLeft:22,fontWeight:400,color:'#5b5070',fontSize:11}},key),
+          ce('td',null,e.target?Nf(Number(e.target)):'—'),
+          ce('td',null,e.endDate?formatDateDMY(e.endDate):'—'),
+          ...kpiCells(subR,e)
+        );
+      })
+    ];
+  }
+
+  if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
   return ce('div',{className:'fade-up'},
-    ce('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:12}},
-      ce('span',{style:{fontSize:11,fontWeight:700,color:'var(--violet-900)',
-        textTransform:'uppercase',letterSpacing:'.07em'}},'Target Level'),
-      ce('div',{style:{display:'flex'}},
-        lvlBtn('oem','OEM','L'),
-        lvlBtn('model','Model','M'),
-        lvlBtn('cam','CAM Name','R')
-      )
-    ),
+    configuring?ce(ConfigModal,{
+      brand:configuring,brandRows:byBrand[configuring]||[],
+      config:configs[configuring],onSave:saveConfig,onClose:()=>setConfiguring(null)
+    }):null,
     ce('div',{className:'card scroll-x'},
       ce('table',null,
         ce('thead',null,
           ce('tr',null,
-            ce('th',{className:'left'},colLabel),
+            ce('th',{className:'left'},'Brand / Entity'),
             ce('th',null,'Lead Target'),
-            ce('th',null,'Campaign End Date'),
+            ce('th',null,'Campaign End'),
             ce('th',null,'Unique Leads'),
             ce('th',null,'Days Elapsed'),
-            ce('th',null,'Current Run Rate'),
+            ce('th',null,'Current RR'),
             ce('th',null,'Last 3D Avg RR'),
             ce('th',null,'Req. Daily RR'),
             ce('th',null,'Days Left')
           )
         ),
-        ce('tbody',null,
-          entities.map(function(e){
-            return ce(SummaryRow,{key:e.key,entityKey:e.key,label:e.label,
-              entityRows:byKey[e.key]||[],campaigns,saveCampaign});
-          })
-        )
+        ce('tbody',null,brands.flatMap(b=>renderBrand(b)))
       )
     )
   );
 }
 
 /* ── Main App ─────────────────────────────────────────────────────── */
-function App({topBar}){
+function App({topBar,isAdmin}){
   const [rows,setRows]=useState([]);
   const [syncing,setSyncing]=useState(false);
   const [error,setError]=useState('');
@@ -995,7 +1042,7 @@ function App({topBar}){
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
       ),
       tab==='summary'?
-        ce(SummaryTab,{rows:filtered}):
+        ce(SummaryTab,{rows:filtered,isAdmin}):
       tab==='overview'?
         ce(OverviewTable,{rows:filtered, onControls:setTableControls}):
       tab==='trigger'?
@@ -1155,7 +1202,7 @@ function AuthGate(){
     ce('button',{className:'btn',style:{fontSize:10,padding:'4px 12px'},onClick:signOut},'Sign out')
   );
 
-  return (isAdmin && showAdmin) ? AdminPanelWithBar(topBar) : ce(App,{topBar});
+  return (isAdmin && showAdmin) ? AdminPanelWithBar(topBar) : ce(App,{topBar,isAdmin});
 }
 function AdminPanelWithBar(topBar){
   return ce('div',null, ce('div',{style:{maxWidth:900,margin:'0 auto',padding:'12px 24px 0'}},topBar), ce(AdminPanel));
