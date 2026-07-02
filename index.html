@@ -243,8 +243,7 @@ function reclassifyHMSI(brand,model){
   if(!/honda|hmsi/i.test(brand)) return brand;
   const n=slugify(model);
   if(HMSI_BW_SLUGS.some(m=>n===m)) return 'HMSI BW';
-  if(HMSI_RW_SLUGS.some(m=>n===m)) return 'HMSI RW';
-  return brand;   /* unrecognised Honda model — keep original */
+  return 'HMSI RW'; /* all other Honda/HMSI models default to HMSI RW */
 }
 
 /* ── Parse raw sheet rows into structured lead records ───────────── */
