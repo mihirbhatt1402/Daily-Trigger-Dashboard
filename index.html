@@ -235,15 +235,16 @@ function toISODate(s){
 }
 
 /* ── HMSI model-based brand reclassification ─────────────────────── */
-const HMSI_BW_MODELS=['cb 350 rs','cb 350','hness cb 350'];
-const HMSI_RW_MODELS=['activa 6g','activa 125','shine 100 dx','shine 100','shine 125','shine','sp 125','cb 125 hornet'];
+/* Slug = only lowercase a-z 0-9, so spacing/hyphens/apostrophes don’t matter */
+function slugify(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,’’); }
+const HMSI_BW_SLUGS=[‘cb350rs’,’cb350’,’hnesscb350’];          /* CB 350 RS first — longer match wins */
+const HMSI_RW_SLUGS=[‘activa6g’,’activa125’,’shine100dx’,’shine100’,’shine125’,’shine’,’sp125’,’cb125hornet’];
 function reclassifyHMSI(brand,model){
   if(!/honda|hmsi/i.test(brand)) return brand;
-  /* normalise: lowercase, strip apostrophes/hyphens, collapse spaces */
-  const n=model.toLowerCase().trim().replace(/['’‘\-]/g,'').replace(/\s+/g,' ');
-  if(HMSI_BW_MODELS.some(m=>n===m)) return 'HMSI BW';
-  if(HMSI_RW_MODELS.some(m=>n===m)) return 'HMSI RW';
-  return brand;
+  const n=slugify(model);
+  if(HMSI_BW_SLUGS.some(m=>n===m)) return ‘HMSI BW’;
+  if(HMSI_RW_SLUGS.some(m=>n===m)) return ‘HMSI RW’;
+  return brand;   /* unrecognised Honda model — keep original */
 }
 
 /* ── Parse raw sheet rows into structured lead records ───────────── */
