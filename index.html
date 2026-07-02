@@ -862,15 +862,18 @@ function SummaryTab({rows,isAdmin}){
   const [configuring,setConfiguring]=useState(null);
 
   useEffect(function(){
-    /* Read from admin's own user doc — query by ADMIN_EMAIL.
-       Error handler silently falls back to empty configs (e.g. if Firestore rules
-       restrict cross-user reads for non-admin viewers). */
-    const unsub=fbDb.collection('users').where('email','==',ADMIN_EMAIL).onSnapshot(
+    /* Configs live in settings/campaignConfigs — a shared doc readable by ALL
+       authenticated users and writable only by the admin. This is the single
+       source of truth so every user sees identical Summary data. */
+    const unsub=fbDb.collection('settings').doc('campaignConfigs').onSnapshot(
       function(snap){
-        if(!snap.empty) setConfigs(snap.docs[0].data().campaignConfigs||{});
-        else setConfigs({});
+        console.log('[Configs] loaded — exists:', snap.exists, '| keys:', snap.exists?Object.keys(snap.data().configs||{}).join(', '):'none');
+        setConfigs(snap.exists?(snap.data().configs||{}):{});
       },
-      function(){ setConfigs({}); }
+      function(e){
+        console.error('[Configs] read failed — code:', e.code, '| message:', e.message);
+        setConfigs({});
+      }
     );
     return unsub;
   },[]);
@@ -879,19 +882,19 @@ function SummaryTab({rows,isAdmin}){
     const uid=fbAuth.currentUser&&fbAuth.currentUser.uid;
     console.log('[saveConfig] uid:', uid, '| brand:', brand, '| config:', JSON.stringify(config));
     if(!uid) return Promise.reject(new Error('Not signed in — please refresh and sign in again.'));
-    const ref=fbDb.collection('users').doc(uid);
-    /* Use FieldPath instead of string dot-notation to safely handle brand names
-       that contain spaces or other special characters (e.g. "Royal Enfield"). */
-    const fp=new firebase.firestore.FieldPath('campaignConfigs',brand);
-    console.log('[saveConfig] calling ref.update() on users/'+uid);
+    /* Write to shared settings/campaignConfigs doc. FieldPath safely handles
+       brand names with spaces (e.g. "Royal Enfield"). */
+    const ref=fbDb.collection('settings').doc('campaignConfigs');
+    const fp=new firebase.firestore.FieldPath('configs',brand);
+    console.log('[saveConfig] writing to settings/campaignConfigs → configs.'+brand);
     return ref.update(fp,config)
-      .then(function(){ console.log('[saveConfig] update() resolved OK'); })
+      .then(function(){ console.log('[saveConfig] update() OK'); })
       .catch(function(e){
-        console.warn('[saveConfig] update() rejected — code:', e.code, e.message);
+        console.warn('[saveConfig] update() failed — code:', e.code, e.message);
         if(e.code==='not-found'){
-          /* Document doesn't exist yet (shouldn't happen — created at sign-in) */
-          console.log('[saveConfig] doc not-found, falling back to set+merge');
-          return ref.set({campaignConfigs:{[brand]:config}},{merge:true});
+          /* First-ever save — document doesn't exist yet, create it */
+          console.log('[saveConfig] doc not-found, creating with set+merge');
+          return ref.set({configs:{[brand]:config}},{merge:true});
         }
         throw e;
       });
