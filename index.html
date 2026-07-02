@@ -11,8 +11,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
 :root{
   --violet:#8B5CF6;--violet-d:#7C3AED;--violet-900:#4C1D95;
   --violet-50:#F5F3FF;--violet-100:#EDE9FE;--violet-200:#DDD6FE;
@@ -240,7 +240,8 @@ function slugify(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
 const HMSI_BW_SLUGS=['cb350rs','cb350','hnesscb350'];          /* CB 350 RS first — longer match wins */
 const HMSI_RW_SLUGS=['activa6g','activa125','shine100dx','shine100','shine125','shine','sp125','cb125hornet'];
 function reclassifyHMSI(brand,model){
-  if(!/honda|hmsi/i.test(brand)) return brand;
+  /* Match only pure Honda/HMSI brands — not "Hero Honda" or other composites */
+  if(!/^(honda|hmsi)\b/i.test(brand.trim())) return brand;
   /* Sheet stores model names like "Honda CB350" — strip leading brand prefix */
   let n=slugify(model);
   if(n.startsWith('honda')) n=n.slice(5);
@@ -777,7 +778,7 @@ function ConfigModal({brand,brandRows,config,onSave,onClose}){
   const iStyle={border:'1px solid var(--violet-200)',borderRadius:6,padding:'5px 8px',
     fontSize:12,outline:'none',width:'100%'};
   const lvlBtns=[['brand','Brand'],['model','Model'],['cam','CAM Name']].map(([l,lbl],i,arr)=>
-    ce('button',{key:l,type:'button',onClick:()=>setLevel(l),
+    ce('button',{key:l,type:'button',onClick:()=>{ setLevel(l); setEntries({}); },
       style:{padding:'7px 18px',fontSize:11,fontWeight:600,fontFamily:'inherit',
         border:'1px solid var(--violet-200)',borderLeft:i===0?undefined:'none',
         borderRadius:i===0?'8px 0 0 8px':i===arr.length-1?'0 8px 8px 0':'0',
@@ -840,20 +841,29 @@ function SummaryTab({rows,isAdmin}){
   const [configuring,setConfiguring]=useState(null);
 
   useEffect(function(){
-    /* Read from admin's own user doc — query by ADMIN_EMAIL */
-    const unsub=fbDb.collection('users').where('email','==',ADMIN_EMAIL).onSnapshot(function(snap){
-      if(!snap.empty) setConfigs(snap.docs[0].data().campaignConfigs||{});
-      else setConfigs({});
-    });
+    /* Read from admin's own user doc — query by ADMIN_EMAIL.
+       Error handler silently falls back to empty configs (e.g. if Firestore rules
+       restrict cross-user reads for non-admin viewers). */
+    const unsub=fbDb.collection('users').where('email','==',ADMIN_EMAIL).onSnapshot(
+      function(snap){
+        if(!snap.empty) setConfigs(snap.docs[0].data().campaignConfigs||{});
+        else setConfigs({});
+      },
+      function(){ setConfigs({}); }
+    );
     return unsub;
   },[]);
 
   function saveConfig(brand,config){
-    /* Write to the currently-signed-in admin's own user doc using dot-notation
-       so other brands' configs are not overwritten (same doc the heartbeat uses) */
+    /* Write to admin's own user doc using dot-notation update so other brands'
+       configs are not overwritten. Falls back to set+merge if doc doesn't exist. */
     const uid=fbAuth.currentUser&&fbAuth.currentUser.uid;
     if(!uid) return Promise.reject(new Error('Not signed in.'));
-    return fbDb.collection('users').doc(uid).update({'campaignConfigs.'+brand:config});
+    const ref=fbDb.collection('users').doc(uid);
+    return ref.update({'campaignConfigs.'+brand:config}).catch(function(e){
+      if(e.code==='not-found') return ref.set({campaignConfigs:{[brand]:config}},{merge:true});
+      throw e;
+    });
   }
 
   const brands=useMemo(function(){
@@ -875,7 +885,9 @@ function SummaryTab({rows,isAdmin}){
     const m=calcBrandMetrics(entityRows);
     const numT=Number((entry||{}).target)||0;
     const ed=(entry||{}).endDate||'';
-    const dl=ed?Math.max(0,daysBetween(today,ed)):null;
+    const rawDl=ed?daysBetween(today,ed):null;
+    const dl=rawDl!==null?Math.max(0,rawDl):null;
+    const expired=rawDl!==null&&rawDl<0;
     const rr=(numT>0&&dl>0)?Math.max(0,numT-m.totalUnique)/dl:null;
     const onP=rr!==null&&m.currentRR>=rr;
     return [
@@ -883,8 +895,10 @@ function SummaryTab({rows,isAdmin}){
       ce('td',{key:'e'},m.daysElapsed+'d'),
       ce('td',{key:'c'},m.currentRR.toFixed(1)+'/d'),
       ce('td',{key:'l'},m.last3RR.toFixed(1)+'/d'),
-      ce('td',{key:'r',style:rr!==null?{color:onP?'#065F46':'#9A3412',fontWeight:700}:{}},rr!==null?rr.toFixed(1)+'/d':'—'),
-      ce('td',{key:'d',style:dl!==null&&dl<=3?{color:'#9A3412',fontWeight:700}:{}},dl!==null?dl+'d':'—')
+      ce('td',{key:'r',style:rr!==null?{color:onP?'#065F46':'#9A3412',fontWeight:700}:expired?{color:'#6B7280'}:{}},
+        rr!==null?rr.toFixed(1)+'/d':expired?'Ended':'—'),
+      ce('td',{key:'d',style:expired?{color:'#6B7280'}:dl!==null&&dl<=3?{color:'#9A3412',fontWeight:700}:{}},
+        expired?'Ended':dl!==null?dl+'d':'—')
     ];
   }
 
