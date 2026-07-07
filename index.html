@@ -127,6 +127,8 @@ const SHEETS_CONFIG = Object.freeze({
   AUTO_SYNC_INTERVAL_MS: 0
 });
 
+const SPENDS_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1oXbKagFoARtnHtFVHikHk79buMp3VY_u1tqlvt6U9dc/edit?gid=1559337629#gid=1559337629';
+
 /* ── Google Sheets sync engine ───────────────────────────────────── */
 function sheetUrlToCsvUrl(url){
   const u=(url||'').trim();
@@ -230,6 +232,10 @@ function toISODate(s){
     if(_y.length===2) _y='20'+_y;
     return _y+'-'+_mo.padStart(2,'0')+'-'+_d.padStart(2,'0');
   }
+  /* d-MMM-yyyy (e.g. "1-Apr-2026" from spends sheet) */
+  const MON={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',jun:'06',jul:'07',aug:'08',sep:'09',oct:'10',nov:'11',dec:'12'};
+  m=s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
+  if(m&&MON[m[2].toLowerCase()]) return m[3]+'-'+MON[m[2].toLowerCase()]+'-'+m[1].padStart(2,'0');
   const d=new Date(s);
   if(!isNaN(d.getTime())) return d.toISOString().slice(0,10);
   return s;
@@ -1036,9 +1042,184 @@ function SummaryTab({rows,isAdmin}){
   );
 }
 
+/* ── Parse spends sheet rows ─────────────────────────────────────── */
+function parseSpends(raw){
+  return raw.map(function(row){
+    const g=makeGetter(row);
+    const segment=g(['Segment','segment']);
+    const buType=g(['BU Type','bu type','BUType','butype']);
+    const day=g(['Day','day']);
+    const cost=parseFloat(String(g(['Cost','cost'])||'0').replace(/[₹,]/g,''))||0;
+    const leads=parseInt(String(g(['Leads','leads'])||'0').replace(/,/g,''))||0;
+    const monthRaw=g(['Month','month']);
+    return {segment,buType,date:toISODate(day),cost,leads,month:monthRaw};
+  }).filter(function(r){ return r.segment==='Bikes' && r.date; });
+}
+
+/* ── Spends Tab ──────────────────────────────────────────────────── */
+function SpendsTab({spendsRows, rows}){
+  /* Derive available months from spends data */
+  const months = useMemo(function(){
+    const ms=[...new Set(spendsRows.map(r=>r.date.slice(0,7)))].sort();
+    return ms;
+  },[spendsRows]);
+
+  const [selMonth,setSelMonth]=useState(function(){ return ''; });
+
+  /* Default to latest month when data arrives */
+  useEffect(function(){
+    if(months.length) setSelMonth(m=>m||months[months.length-1]);
+  },[months]);
+
+  const monthLabel=useMemo(function(){
+    if(!selMonth) return '';
+    const d=new Date(selMonth+'-01');
+    return d.toLocaleString('en-IN',{month:'short',year:'numeric'});
+  },[selMonth]);
+
+  /* Filter spends to selected month */
+  const filtered=useMemo(function(){
+    return spendsRows.filter(r=>r.date.startsWith(selMonth));
+  },[spendsRows,selMonth]);
+
+  /* Build per-date per-channel map from spends */
+  const spendMap=useMemo(function(){
+    const m={};
+    for(const r of filtered){
+      const ch=r.buType==='Media Sales-FB'?'fb':r.buType==='Media Sales-GA'?'adwords':null;
+      if(!ch) continue;
+      if(!m[r.date]) m[r.date]={fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}};
+      m[r.date][ch].cost+=r.cost;
+      m[r.date][ch].genLeads+=r.leads;
+    }
+    return m;
+  },[filtered]);
+
+  /* Build per-date per-source unique trigger leads from leads rows (current month) */
+  const triggerMap=useMemo(function(){
+    const m={};
+    const monthRows=rows.filter(r=>r.isUnique&&r.date&&r.date.startsWith(selMonth));
+    for(const r of monthRows){
+      const src=r.source||'';
+      const ch=src==='MS FB'?'fb':src==='Adwords'?'adwords':null;
+      if(!ch) continue;
+      if(!m[r.date]) m[r.date]={fb:0,adwords:0};
+      m[r.date][ch]++;
+    }
+    return m;
+  },[rows,selMonth]);
+
+  const dates=useMemo(function(){
+    return [...new Set([...Object.keys(spendMap)])].sort().reverse();
+  },[spendMap]);
+
+  /* Totals row */
+  const totals=useMemo(function(){
+    let fbCost=0,fbGen=0,fbTrig=0,awCost=0,awGen=0,awTrig=0;
+    for(const dt of dates){
+      const sp=spendMap[dt]||{fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}};
+      const tr=triggerMap[dt]||{fb:0,adwords:0};
+      fbCost+=sp.fb.cost; fbGen+=sp.fb.genLeads; fbTrig+=tr.fb;
+      awCost+=sp.adwords.cost; awGen+=sp.adwords.genLeads; awTrig+=tr.adwords;
+    }
+    const totCost=fbCost+awCost;
+    const totGen=fbGen+awGen;
+    const totTrig=fbTrig+awTrig;
+    return {fbCost,fbGen,fbTrig,awCost,awGen,awTrig,totCost,totGen,totTrig};
+  },[dates,spendMap,triggerMap]);
+
+  function fmtCost(n){ return n?'₹'+Nf(Math.round(n)):'—'; }
+  function fmtCpl(cost,leads){ return (cost&&leads)?'₹'+(cost/leads).toFixed(0):'—'; }
+
+  function renderRow(dt,isTotal){
+    const sp=isTotal?null:(spendMap[dt]||{fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}});
+    const tr=isTotal?null:(triggerMap[dt]||{fb:0,adwords:0});
+    const fbCost=isTotal?totals.fbCost:sp.fb.cost;
+    const fbGen=isTotal?totals.fbGen:sp.fb.genLeads;
+    const fbTrig=isTotal?totals.fbTrig:tr.fb;
+    const awCost=isTotal?totals.awCost:sp.adwords.cost;
+    const awGen=isTotal?totals.awGen:sp.adwords.genLeads;
+    const awTrig=isTotal?totals.awTrig:tr.adwords;
+    const totCost=fbCost+awCost;
+    const totGen=fbGen+awGen;
+    const totTrig=fbTrig+awTrig;
+    const label=isTotal?'Total':formatDateDMY(dt);
+    return ce('tr',{key:isTotal?'total':dt,className:isTotal?'total-row':''},
+      ce('td',{style:{fontWeight:isTotal?700:'',whiteSpace:'nowrap'}},label),
+      ce('td',{style:{textAlign:'right'}},fmtCost(fbCost)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(fbCost,fbGen)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(fbCost,fbTrig)),
+      ce('td',{style:{textAlign:'right'}},fmtCost(awCost)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(awCost,awGen)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(awCost,awTrig)),
+      ce('td',{style:{textAlign:'right'}},fmtCost(totCost)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(totCost,totGen)),
+      ce('td',{style:{textAlign:'right'}},fmtCpl(totCost,totTrig))
+    );
+  }
+
+  const thStyle={textAlign:'right',padding:'6px 10px',fontSize:12,fontWeight:600,whiteSpace:'nowrap'};
+  const thLabel={textAlign:'left',padding:'6px 10px',fontSize:12,fontWeight:600};
+  const groupTh={textAlign:'center',padding:'6px 10px',fontSize:12,fontWeight:700,
+    borderBottom:'2px solid var(--violet-d)',color:'var(--violet-d)'};
+
+  return ce('div',{className:'card',style:{padding:0,overflow:'hidden'}},
+    /* Month selector */
+    ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderBottom:'1px solid #E5E7EB'}},
+      ce('span',{style:{fontSize:13,fontWeight:600,color:'var(--violet-d)'}},
+        'Day-wise Spends — Bikes Segment'+(monthLabel?' ('+monthLabel+')':'')),
+      ce('select',{
+        value:selMonth,
+        onChange:function(e){setSelMonth(e.target.value);},
+        style:{marginLeft:'auto',padding:'4px 8px',borderRadius:6,border:'1px solid #D1D5DB',fontSize:13}
+      },
+        months.map(function(mo){
+          const d=new Date(mo+'-01');
+          const lbl=d.toLocaleString('en-IN',{month:'short',year:'numeric'});
+          return ce('option',{key:mo,value:mo},lbl);
+        })
+      )
+    ),
+    /* Table */
+    ce('div',{style:{overflowX:'auto'}},
+      ce('table',{style:{width:'100%',borderCollapse:'collapse',fontSize:13}},
+        ce('thead',null,
+          /* Group header row */
+          ce('tr',{style:{background:'#F5F3FF'}},
+            ce('th',{style:{...thLabel,borderBottom:'1px solid #E5E7EB'}},'Date'),
+            ce('th',{colSpan:3,style:{...groupTh,borderBottom:'1px solid #E5E7EB',borderLeft:'2px solid #E5E7EB'}},'MS FB'),
+            ce('th',{colSpan:3,style:{...groupTh,borderBottom:'1px solid #E5E7EB',borderLeft:'2px solid #E5E7EB'}},'Adwords'),
+            ce('th',{colSpan:3,style:{...groupTh,borderBottom:'1px solid #E5E7EB',borderLeft:'2px solid #E5E7EB'}},'Total')
+          ),
+          /* Sub-header row */
+          ce('tr',{style:{background:'#FAFAFA',borderBottom:'2px solid #E5E7EB'}},
+            ce('th',{style:{...thLabel}},''),
+            ce('th',{style:{...thStyle,borderLeft:'2px solid #E5E7EB'}},'Spends'),
+            ce('th',{style:thStyle},'G-CPL'),
+            ce('th',{style:thStyle},'T-CPL'),
+            ce('th',{style:{...thStyle,borderLeft:'2px solid #E5E7EB'}},'Spends'),
+            ce('th',{style:thStyle},'G-CPL'),
+            ce('th',{style:thStyle},'T-CPL'),
+            ce('th',{style:{...thStyle,borderLeft:'2px solid #E5E7EB'}},'Spends'),
+            ce('th',{style:thStyle},'G-CPL'),
+            ce('th',{style:thStyle},'T-CPL')
+          )
+        ),
+        ce('tbody',null,
+          renderRow(null,true),
+          dates.length===0
+            ? ce('tr',null,ce('td',{colSpan:10,style:{textAlign:'center',padding:24,color:'#9CA3AF'}},'No spends data for this month.'))
+            : dates.map(function(dt){ return renderRow(dt,false); })
+        )
+      )
+    )
+  );
+}
+
 /* ── Main App ─────────────────────────────────────────────────────── */
 function App({topBar,isAdmin}){
   const [rows,setRows]=useState([]);
+  const [spendsRows,setSpendsRows]=useState([]);
   const [syncing,setSyncing]=useState(false);
   const [error,setError]=useState('');
   const [lastSynced,setLastSynced]=useState('');
@@ -1050,10 +1231,19 @@ function App({topBar,isAdmin}){
   const sync=useCallback(async function(){
     setSyncing(true); setError('');
     try{
-      const csv=await fetchSheetCsv(SHEETS_CONFIG.SHEET_URL);
+      const [csv,spendsCsv]=await Promise.all([
+        fetchSheetCsv(SHEETS_CONFIG.SHEET_URL),
+        fetchSheetCsv(SPENDS_SHEET_URL).catch(function(){ return ''; })
+      ]);
       const raw=parseCsvToRows(csv);
       const parsed=parseRows(raw);
       setRows(parsed);
+      if(spendsCsv){
+        try{
+          const sRaw=parseCsvToRows(spendsCsv);
+          setSpendsRows(parseSpends(sRaw));
+        }catch(e2){ console.warn('[Spends] parse error',e2); }
+      }
       setLastSynced(new Date().toLocaleString('en-IN'));
     }catch(e){
       setError(e.message||String(e));
@@ -1116,7 +1306,8 @@ function App({topBar,isAdmin}){
           ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Summary'),
           ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
-          ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate')
+          ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
+          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Spends')
         ),
         (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
@@ -1127,7 +1318,9 @@ function App({topBar,isAdmin}){
         ce(OverviewTable,{rows:filtered, onControls:setTableControls}):
       tab==='trigger'?
         ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
-        ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls})
+      tab==='duplicate'?
+        ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
+        ce(SpendsTab,{spendsRows,rows:filtered})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
