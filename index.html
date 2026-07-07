@@ -1165,9 +1165,13 @@ function SpendsTab({spendsRows, rows}){
 
   return ce('div',{className:'card',style:{padding:0,overflow:'hidden'}},
     /* Month selector */
-    ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderBottom:'1px solid #E5E7EB'}},
-      ce('span',{style:{fontSize:13,fontWeight:600,color:'var(--violet-d)'}},
-        'Day-wise Spends — Bikes Segment'+(monthLabel?' ('+monthLabel+')':'')),
+    ce('div',{style:{display:'flex',alignItems:'center',gap:10,padding:'12px 16px',borderBottom:'1px solid #E5E7EB',flexWrap:'wrap'}},
+      ce('div',{style:{display:'flex',flexDirection:'column',gap:2}},
+        ce('span',{style:{fontSize:13,fontWeight:600,color:'var(--violet-d)'}},
+          'Day-wise Spends — Bikes Segment'+(monthLabel?' ('+monthLabel+')':'')),
+        ce('span',{style:{fontSize:11,color:'#9CA3AF'}},
+          'Spends & G-CPL are channel-level totals (not filtered by brand/model). T-CPL reflects the current brand/model filter.')
+      ),
       ce('select',{
         value:selMonth,
         onChange:function(e){setSelMonth(e.target.value);},
