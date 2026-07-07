@@ -1094,10 +1094,16 @@ function SpendsTab({spendsRows, rows, filters}){
       const modelMatched=brandRows.filter(function(r){
         const mSlug=slugify(r.model||'');
         return filters.model.some(function(fm){
-          /* Exact slug match: "Honda CB350RS" must not match "Honda CB350".
-             fs.includes(mSlug) caused "hondacb350rs".includes("hondacb350") → true,
-             double-counting CB350 rows whenever CB350RS filter is active. */
-          return mSlug===slugify(fm);
+          const fs=slugify(fm);
+          if(mSlug===fs) return true;
+          /* Leads sheet may store models without brand prefix
+             (e.g. "Activa 6G") while spends uses "Honda Activa 6G".
+             Try stripping known brand prefixes from spends slug before comparing.
+             This avoids both double-counting and silent misses. */
+          for(const pfx of ['honda','harleydavidson','royalenfield']){
+            if(mSlug===pfx+fs) return true;
+          }
+          return false;
         });
       });
       result.push(...(modelMatched.length?modelMatched:brandRows));
