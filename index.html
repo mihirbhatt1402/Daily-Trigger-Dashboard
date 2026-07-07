@@ -1062,7 +1062,7 @@ function parseSpends(raw){
     const buType=g(['BU Type','bu type','BUType','butype']);
     const day=g(['Day','day']);
     const cost=parseFloat(String(g(['Cost','cost'])||'0').replace(/[₹,]/g,''))||0;
-    const leads=parseInt(String(g(['Leads','leads'])||'0').replace(/,/g,''))||0;
+    const leads=parseFloat(String(g(['Leads','leads'])||'0').replace(/,/g,''))||0;
     const monthRaw=g(['Month','month']);
     const brand=g(['Brand','brand']);
     const model=g(['Model','model']);
@@ -1077,11 +1077,6 @@ function SpendsTab({spendsRows, rows, filters}){
     return spendsRows.filter(function(r){
       if(filters.brand){
         if(spendsBrandToLeads(r.brand)!==filters.brand) return false;
-      }
-      if(filters.model&&filters.model.length){
-        const mSlug=slugify(r.model||'');
-        const match=filters.model.some(function(fm){ const fs=slugify(fm); return mSlug.includes(fs)||fs.includes(mSlug); });
-        if(!match) return false;
       }
       return true;
     });
