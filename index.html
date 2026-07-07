@@ -1042,6 +1042,18 @@ function SummaryTab({rows,isAdmin}){
   );
 }
 
+/* ── Spends brand name → leads dashboard brand name mapping ─────── */
+const SPENDS_BRAND_MAP={
+  'royal enfield':'Royal Enfield',
+  'ola':'Ola Electric',
+  'hmsi bigwing':'HMSI BW',
+  'hmsi redwing':'HMSI RW',
+  'harley':'Harley-Davidson',
+};
+function spendsBrandToLeads(b){
+  return SPENDS_BRAND_MAP[String(b||'').toLowerCase().trim()]||b;
+}
+
 /* ── Parse spends sheet rows ─────────────────────────────────────── */
 function parseSpends(raw){
   return raw.map(function(row){
@@ -1052,17 +1064,34 @@ function parseSpends(raw){
     const cost=parseFloat(String(g(['Cost','cost'])||'0').replace(/[₹,]/g,''))||0;
     const leads=parseInt(String(g(['Leads','leads'])||'0').replace(/,/g,''))||0;
     const monthRaw=g(['Month','month']);
-    return {segment,buType,date:toISODate(day),cost,leads,month:monthRaw};
+    const brand=g(['Brand','brand']);
+    const model=g(['Model','model']);
+    return {segment,buType,date:toISODate(day),cost,leads,month:monthRaw,brand,model};
   }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
 }
 
 /* ── Spends Tab ──────────────────────────────────────────────────── */
-function SpendsTab({spendsRows, rows}){
-  /* Derive available months from spends data */
+function SpendsTab({spendsRows, rows, filters}){
+  /* Apply brand / model filters to spends rows */
+  const filteredSpends=useMemo(function(){
+    return spendsRows.filter(function(r){
+      if(filters.brand){
+        if(spendsBrandToLeads(r.brand)!==filters.brand) return false;
+      }
+      if(filters.model&&filters.model.length){
+        const mSlug=slugify(r.model||'');
+        const match=filters.model.some(function(fm){ const fs=slugify(fm); return mSlug.includes(fs)||fs.includes(mSlug); });
+        if(!match) return false;
+      }
+      return true;
+    });
+  },[spendsRows,filters]);
+
+  /* Derive available months from filtered spends data */
   const months = useMemo(function(){
-    const ms=[...new Set(spendsRows.map(r=>r.date.slice(0,7)))].sort();
+    const ms=[...new Set(filteredSpends.map(r=>r.date.slice(0,7)))].sort();
     return ms;
-  },[spendsRows]);
+  },[filteredSpends]);
 
   const [selMonth,setSelMonth]=useState(function(){ return ''; });
 
@@ -1079,8 +1108,8 @@ function SpendsTab({spendsRows, rows}){
 
   /* Filter spends to selected month */
   const filtered=useMemo(function(){
-    return spendsRows.filter(r=>r.date.startsWith(selMonth));
-  },[spendsRows,selMonth]);
+    return filteredSpends.filter(r=>r.date.startsWith(selMonth));
+  },[filteredSpends,selMonth]);
 
   /* Build per-date per-channel map from spends */
   const spendMap=useMemo(function(){
@@ -1170,7 +1199,7 @@ function SpendsTab({spendsRows, rows}){
         ce('span',{style:{fontSize:13,fontWeight:600,color:'var(--violet-d)'}},
           'Day-wise Spends — Bikes Segment'+(monthLabel?' ('+monthLabel+')':'')),
         ce('span',{style:{fontSize:11,color:'#9CA3AF'}},
-          'Spends & G-CPL are channel-level totals (not filtered by brand/model). T-CPL reflects the current brand/model filter.')
+          'Bikes segment · filtered by active brand / model selection')
       ),
       ce('select',{
         value:selMonth,
@@ -1324,7 +1353,7 @@ function App({topBar,isAdmin}){
         ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
       tab==='duplicate'?
         ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
-        ce(SpendsTab,{spendsRows,rows:filtered})
+        ce(SpendsTab,{spendsRows,rows:filtered,filters})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
