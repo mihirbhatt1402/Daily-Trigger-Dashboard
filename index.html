@@ -1066,7 +1066,8 @@ function parseSpends(raw){
     const monthRaw=g(['Month','month']);
     const brand=g(['Brand','brand']);
     const model=g(['Model','model']);
-    return {segment,buType,date:toISODate(day),cost,leads,month:monthRaw,brand,model};
+    const accountName=g(['Account name','account name','AccountName','accountname']);
+    return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model};
   }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
 }
 
@@ -1123,11 +1124,12 @@ function SpendsTab({spendsRows, rows, filters}){
   const spendMap=useMemo(function(){
     const m={};
     for(const r of filtered){
-      /* Map channel: FB → fb, GA → adwords.
-         BU Type "#N/A" (e.g. Google Ads P-Max "Media Sales-AUTO" rows) are
-         confirmed non-FB Google campaigns → also count as adwords. */
       const bt=String(r.buType||'').trim();
-      const ch=bt==='Media Sales-FB'?'fb':(bt==='Media Sales-GA'||bt==='#N/A'||bt==='')?'adwords':null;
+      const isNA=bt==='#N/A'||bt==='';
+      const acct=String(r.accountName||'').trim().toLowerCase();
+      /* BU Type #N/A + Account name "Media Sales -AUTO" → MS FB */
+      const ch=bt==='Media Sales-FB'||(isNA&&acct.includes('auto'))?'fb':
+               bt==='Media Sales-GA'||(isNA&&!acct.includes('auto'))?'adwords':null;
       if(!ch) continue;
       if(!m[r.date]) m[r.date]={fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}};
       m[r.date][ch].cost+=r.cost;
