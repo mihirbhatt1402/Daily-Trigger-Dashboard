@@ -1053,7 +1053,7 @@ function parseSpends(raw){
     const leads=parseInt(String(g(['Leads','leads'])||'0').replace(/,/g,''))||0;
     const monthRaw=g(['Month','month']);
     return {segment,buType,date:toISODate(day),cost,leads,month:monthRaw};
-  }).filter(function(r){ return r.segment==='Bikes' && r.date; });
+  }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
 }
 
 /* ── Spends Tab ──────────────────────────────────────────────────── */
