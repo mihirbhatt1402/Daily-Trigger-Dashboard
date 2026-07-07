@@ -1123,7 +1123,11 @@ function SpendsTab({spendsRows, rows, filters}){
   const spendMap=useMemo(function(){
     const m={};
     for(const r of filtered){
-      const ch=r.buType==='Media Sales-FB'?'fb':r.buType==='Media Sales-GA'?'adwords':null;
+      /* Map channel: FB → fb, GA → adwords.
+         BU Type "#N/A" (e.g. Google Ads P-Max "Media Sales-AUTO" rows) are
+         confirmed non-FB Google campaigns → also count as adwords. */
+      const bt=String(r.buType||'').trim();
+      const ch=bt==='Media Sales-FB'?'fb':(bt==='Media Sales-GA'||bt==='#N/A'||bt==='')?'adwords':null;
       if(!ch) continue;
       if(!m[r.date]) m[r.date]={fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}};
       m[r.date][ch].cost+=r.cost;
