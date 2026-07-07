@@ -1094,8 +1094,10 @@ function SpendsTab({spendsRows, rows, filters}){
       const modelMatched=brandRows.filter(function(r){
         const mSlug=slugify(r.model||'');
         return filters.model.some(function(fm){
-          const fs=slugify(fm);
-          return mSlug.includes(fs)||fs.includes(mSlug);
+          /* Exact slug match: "Honda CB350RS" must not match "Honda CB350".
+             fs.includes(mSlug) caused "hondacb350rs".includes("hondacb350") → true,
+             double-counting CB350 rows whenever CB350RS filter is active. */
+          return mSlug===slugify(fm);
         });
       });
       result.push(...(modelMatched.length?modelMatched:brandRows));
