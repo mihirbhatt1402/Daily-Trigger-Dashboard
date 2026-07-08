@@ -579,7 +579,7 @@ function sumSourceCounts(counts){
 /* ── Overview table: Brand × Source (each split into Unique/Duplicate
    sub-columns), brand rows expand/collapse into model rows. Same
    drag-select + copy-as-TSV behavior as GridTable. ── */
-function OverviewTable({rows, onControls}){
+function OverviewTable({rows, spendsRows, onControls}){
   const [expanded,setExpanded]=useState(new Set());
   const [sel,setSel]=useState(null);
   const draggingRef=useRef(false);
@@ -588,6 +588,58 @@ function OverviewTable({rows, onControls}){
   const sources = useMemo(()=>sortSources(distinctSorted(rows,'source')),[rows]);
   const agg = useMemo(()=>buildBrandModelAgg(rows),[rows]);
   const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>sumSourceCounts(agg[b].total)-sumSourceCounts(agg[a].total)),[agg]);
+
+  /* ── Spends aggregation ── */
+  const spendsMonth = useMemo(function(){
+    const ms=[...new Set((spendsRows||[]).map(r=>r.date.slice(0,7)))].sort();
+    return ms[ms.length-1]||'';
+  },[spendsRows]);
+
+  const spendsMonthLabel = useMemo(function(){
+    if(!spendsMonth) return '';
+    return new Date(spendsMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
+  },[spendsMonth]);
+
+  const spendsAgg = useMemo(function(){
+    const byBrand={};
+    const monthRows=(spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth));
+    for(const r of monthRows){
+      const lb=spendsBrandToLeads(r.brand);
+      if(!byBrand[lb]) byBrand[lb]={total:0,rows:[]};
+      byBrand[lb].total+=r.cost;
+      byBrand[lb].rows.push(r);
+    }
+    return byBrand;
+  },[spendsRows,spendsMonth]);
+
+  function getModelSpend(brand,model){
+    const ba=spendsAgg[brand];
+    if(!ba) return null;
+    const fs=slugify(model||'');
+    let total=0,found=false;
+    for(const r of ba.rows){
+      const mSlug=slugify(r.model||'');
+      let match=(mSlug===fs);
+      if(!match){ for(const pfx of ['honda','harleydavidson','royalenfield']){ if(mSlug===pfx+fs){match=true;break;} } }
+      if(match){total+=r.cost;found=true;}
+    }
+    return found?total:null;
+  }
+
+  /* Unique trigger leads by brand and model from current rows */
+  const uniqueMap = useMemo(function(){
+    const m={};
+    for(const r of rows){
+      if(!r.isUnique) continue;
+      if(!m[r.brand]) m[r.brand]={total:0,models:{}};
+      m[r.brand].total++;
+      m[r.brand].models[r.model]=(m[r.brand].models[r.model]||0)+1;
+    }
+    return m;
+  },[rows]);
+
+  function fmtSpend(v){ return v==null||v===0?'—':'₹'+Nf(Math.round(v)); }
+  function fmtTcpl(cost,uniq){ return (!cost||!uniq)?'—':'₹'+Math.round(cost/uniq); }
 
   /* column model: one [source,'unique'/'duplicate'] pair per source,
      plus a trailing Total group with the same two kinds + a combined total */
@@ -724,22 +776,40 @@ function OverviewTable({rows, onControls}){
   if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
+  const spendsTh={style:{textAlign:'right',padding:'4px 8px',fontSize:12,fontWeight:600,background:'#EDE9FE',color:'#5B21B6',whiteSpace:'nowrap',top:24}};
+  const spendsTd={style:{textAlign:'right',padding:'4px 8px',fontSize:12,whiteSpace:'nowrap'}};
+  const spendsGrpTh={style:{textAlign:'center',padding:'4px 8px',fontSize:12,fontWeight:700,background:'#DDD6FE',color:'#4C1D95',whiteSpace:'nowrap',borderLeft:'2px solid #C4B5FD'}};
+
+  /* Total spends across all brands in current spends month */
+  const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
+  const totalUnique=rows.filter(r=>r.isUnique).length;
+
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
         ce('thead',null,
           ce('tr',null,
             th(0,0,'Brand',{className:'left',rowSpan:2}),
-            headerGroups.map(g=>th(0,g.colStart+1,g.label,{colSpan:g.span}))
+            headerGroups.map(g=>th(0,g.colStart+1,g.label,{colSpan:g.span})),
+            spendsMonthLabel?ce('th',{colSpan:2,style:{...spendsGrpTh.style,top:0}},
+              'Spends ('+spendsMonthLabel+')'):null
           ),
           ce('tr',null,
-            cols.map((col,i)=>subHeaderCell(col,i))
+            cols.map((col,i)=>subHeaderCell(col,i)),
+            spendsMonthLabel?[
+              ce('th',{key:'sc',style:{...spendsTh.style,borderLeft:'2px solid #C4B5FD'}},'Total ₹'),
+              ce('th',{key:'tc',style:spendsTh.style},'T-CPL')
+            ]:null
           )
         ),
         ce('tbody',null,
           ce('tr',{className:'total-row'},
             td(2,0,'Total',{className:'label'}),
-            cols.map((col,i)=>td(2,i+1,Nf(colTotals[i])))
+            cols.map((col,i)=>td(2,i+1,Nf(colTotals[i]))),
+            spendsMonthLabel?[
+              ce('td',{key:'ts',style:{...spendsTd.style,fontWeight:700,borderLeft:'2px solid #C4B5FD'}},fmtSpend(totalBrandSpend)),
+              ce('td',{key:'tt',style:{...spendsTd.style,fontWeight:700}},fmtTcpl(totalBrandSpend,totalUnique))
+            ]:null
           ),
           displayRows.map((dr,i)=>{
             const r=i+3;
@@ -753,10 +823,31 @@ function OverviewTable({rows, onControls}){
                 ce('span',{style:{fontWeight:700}},dr.brand)
               ):
               ce('span',{style:{paddingLeft:20,color:'#5b5070'}},dr.model);
+
+            let spendCells=null;
+            if(spendsMonthLabel){
+              if(dr.type==='brand'){
+                const bs=(spendsAgg[dr.brand]||{}).total||0;
+                const bu=(uniqueMap[dr.brand]||{}).total||0;
+                spendCells=[
+                  ce('td',{key:'bs',style:{...spendsTd.style,fontWeight:700,borderLeft:'2px solid #C4B5FD'}},fmtSpend(bs)),
+                  ce('td',{key:'bt',style:{...spendsTd.style,fontWeight:700}},fmtTcpl(bs,bu))
+                ];
+              } else {
+                const ms=getModelSpend(dr.brand,dr.model);
+                const mu=(uniqueMap[dr.brand]&&uniqueMap[dr.brand].models[dr.model])||0;
+                spendCells=[
+                  ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},fmtSpend(ms)),
+                  ce('td',{key:'mt',style:spendsTd.style},ms!=null?fmtTcpl(ms,mu):'—')
+                ];
+              }
+            }
+
             return ce('tr',{key:dr.type+dr.brand+(dr.model||'')},
               td(r,0,labelContent,{className:'label'}),
               cols.map((col,i2)=>colCell(r,dr.counts,col,i2,
-                col.kind==='combined'?{style:{fontWeight:dr.type==='brand'?700:400}}:null))
+                col.kind==='combined'?{style:{fontWeight:dr.type==='brand'?700:400}}:null)),
+              spendCells
             );
           })
         )
@@ -1329,7 +1420,7 @@ function App({topBar,isAdmin}){
           ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
           ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
-          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Spends')
+          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
         ),
         (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
@@ -1337,7 +1428,7 @@ function App({topBar,isAdmin}){
       tab==='summary'?
         ce(SummaryTab,{rows:filtered,isAdmin}):
       tab==='overview'?
-        ce(OverviewTable,{rows:filtered, onControls:setTableControls}):
+        ce(OverviewTable,{rows:filtered, spendsRows, onControls:setTableControls}):
       tab==='trigger'?
         ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
       tab==='duplicate'?
