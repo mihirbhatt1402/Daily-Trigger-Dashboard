@@ -616,11 +616,18 @@ function OverviewTable({rows, spendsRows, onControls}){
     const ba=spendsAgg[brand];
     if(!ba) return null;
     const fs=slugify(model||'');
+    const bSlug=slugify(brand||'');
+    /* When leads store "Royal Enfield Flying Flea C6" but spends store "Flying Flea C6",
+       strip the brand prefix from the leads slug for matching. */
+    const fsNoBrand=fs.startsWith(bSlug)?fs.slice(bSlug.length):fs;
     let total=0,found=false;
     for(const r of ba.rows){
       const mSlug=slugify(r.model||'');
-      let match=(mSlug===fs);
-      if(!match){ for(const pfx of ['honda','harleydavidson','royalenfield']){ if(mSlug===pfx+fs){match=true;break;} } }
+      /* Skip catch-all rows (model name = brand name); those are handled separately. */
+      if(mSlug===slugify(r.brand||'')) continue;
+      let match=(mSlug===fs)||(fsNoBrand&&mSlug===fsNoBrand);
+      if(!match){ for(const pfx of ['honda','harleydavidson','royalenfield']){
+        if(mSlug===pfx+fs||mSlug===pfx+fsNoBrand){match=true;break;} } }
       if(match){total+=r.cost;found=true;}
     }
     return found?total:null;
@@ -634,12 +641,40 @@ function OverviewTable({rows, spendsRows, onControls}){
     const m={};
     for(const r of rows){
       if(!r.isUnique||!PAID_SOURCES.has(r.source)) continue;
+      /* Align T-CPL denominator to the same month shown in spendsAgg */
+      if(spendsMonth&&r.date&&!r.date.startsWith(spendsMonth)) continue;
       if(!m[r.brand]) m[r.brand]={total:0,models:{}};
       m[r.brand].total++;
       m[r.brand].models[r.model]=(m[r.brand].models[r.model]||0)+1;
     }
     return m;
-  },[rows]);
+  },[rows,spendsMonth]);
+
+  /* For brands whose spends are aggregated in one catch-all row (e.g. RE all models
+     except Flying Flea), find the model with the most paid unique leads and show the
+     catch-all spend + T-CPL there. All other catch-all models show "—". */
+  const brandCatchAllInfo=useMemo(function(){
+    const info={};
+    for(const b of brands){
+      const ba=spendsAgg[b];
+      if(!ba) continue;
+      let catchAllSpend=0;
+      for(const r of ba.rows){
+        if(slugify(r.model||'')===slugify(r.brand||'')) catchAllSpend+=r.cost;
+      }
+      if(!catchAllSpend) continue;
+      const bModels=(uniqueMap[b]||{}).models||{};
+      /* Catch-all models = those without their own specific spend row */
+      const caModels=Object.keys(bModels).filter(m=>getModelSpend(b,m)===null);
+      if(!caModels.length) continue;
+      /* Top model by paid unique leads among catch-all models */
+      let topModel=caModels[0],topLeads=bModels[caModels[0]]||0;
+      for(const m of caModels){ const cnt=bModels[m]||0; if(cnt>topLeads){topLeads=cnt;topModel=m;} }
+      const totalLeads=caModels.reduce((s,m)=>s+(bModels[m]||0),0);
+      info[b]={topModel,spend:catchAllSpend,totalLeads};
+    }
+    return info;
+  },[brands,spendsAgg,uniqueMap]);
 
   function fmtSpend(v){ return v==null||v===0?'—':'₹'+Nf(Math.round(v)); }
   function fmtTcpl(cost,uniq){ return (!cost||!uniq)?'—':'₹'+Math.round(cost/uniq); }
@@ -785,7 +820,7 @@ function OverviewTable({rows, spendsRows, onControls}){
 
   /* Total spends across all brands in current spends month */
   const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
-  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)).length;
+  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)&&(!spendsMonth||r.date.startsWith(spendsMonth))).length;
 
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
@@ -838,11 +873,22 @@ function OverviewTable({rows, spendsRows, onControls}){
                 ];
               } else {
                 const ms=getModelSpend(dr.brand,dr.model);
-                const mu=(uniqueMap[dr.brand]&&uniqueMap[dr.brand].models[dr.model])||0;
-                spendCells=[
-                  ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},fmtSpend(ms)),
-                  ce('td',{key:'mt',style:spendsTd.style},ms!=null?fmtTcpl(ms,mu):'—')
-                ];
+                if(ms!=null){
+                  /* Model has its own specific spend row (e.g. RE Flying Flea) */
+                  const mu=(uniqueMap[dr.brand]&&uniqueMap[dr.brand].models[dr.model])||0;
+                  spendCells=[
+                    ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},fmtSpend(ms)),
+                    ce('td',{key:'mt',style:spendsTd.style},fmtTcpl(ms,mu))
+                  ];
+                } else {
+                  /* Check if this is the top catch-all model for its brand */
+                  const bca=brandCatchAllInfo[dr.brand];
+                  const isCaTop=bca&&bca.topModel===dr.model;
+                  spendCells=[
+                    ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},isCaTop?fmtSpend(bca.spend):'—'),
+                    ce('td',{key:'mt',style:spendsTd.style},isCaTop?fmtTcpl(bca.spend,bca.totalLeads):'—')
+                  ];
+                }
               }
             }
 
@@ -1270,12 +1316,18 @@ function SpendsTab({spendsRows, rows, filters}){
       fbCost+=sp.fb.cost; fbGen+=sp.fb.genLeads; fbTrig+=tr.fb;
       awCost+=sp.adwords.cost; awGen+=sp.adwords.genLeads; awTrig+=tr.adwords;
     }
+    /* Include trigger leads on dates that have leads but no spends (e.g. today),
+       so Total T-CPL denominator matches Overview tab exactly. */
+    for(const dt of Object.keys(triggerMap)){
+      if(!spendMap[dt]){ fbTrig+=triggerMap[dt].fb; awTrig+=triggerMap[dt].adwords; }
+    }
     return {fbCost,fbGen,fbTrig,awCost,awGen,awTrig,
       totCost:fbCost+awCost,totGen:fbGen+awGen,totTrig:fbTrig+awTrig};
   },[dates,spendMap,triggerMap]);
 
   function fmtCost(n){ return n?'₹'+Nf(Math.round(n)):'—'; }
   function fmtCpl(cost,leads){ return (cost&&leads)?'₹'+(cost/leads).toFixed(0):'—'; }
+  function fmtUtil(trig,gen){ return (gen&&trig!=null)?Math.round(trig/gen*100)+'%':'—'; }
 
   function renderRow(dt,isTotal){
     const sp=isTotal?null:(spendMap[dt]||{fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}});
@@ -1292,12 +1344,15 @@ function SpendsTab({spendsRows, rows, filters}){
       ce('td',null,fmtCost(fbCost)),
       ce('td',null,fmtCpl(fbCost,fbGen)),
       ce('td',null,fmtCpl(fbCost,fbTrig)),
+      ce('td',null,fmtUtil(fbTrig,fbGen)),
       ce('td',null,fmtCost(awCost)),
       ce('td',null,fmtCpl(awCost,awGen)),
       ce('td',null,fmtCpl(awCost,awTrig)),
+      ce('td',null,fmtUtil(awTrig,awGen)),
       ce('td',null,fmtCost(totCost)),
       ce('td',null,fmtCpl(totCost,totGen)),
-      ce('td',null,fmtCpl(totCost,totTrig))
+      ce('td',null,fmtCpl(totCost,totTrig)),
+      ce('td',null,fmtUtil(totTrig,totGen))
     );
   }
 
@@ -1317,20 +1372,20 @@ function SpendsTab({spendsRows, rows, filters}){
         ce('thead',null,
           ce('tr',null,
             ce('th',{className:'left',rowSpan:2},'Date'),
-            ce('th',{colSpan:3},'MS FB'),
-            ce('th',{colSpan:3},'Adwords'),
-            ce('th',{colSpan:3},'Total')
+            ce('th',{colSpan:4},'MS FB'),
+            ce('th',{colSpan:4},'Adwords'),
+            ce('th',{colSpan:4},'Total')
           ),
           ce('tr',null,
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'),
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'),
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL')
+            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
+            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
+            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%')
           )
         ),
         ce('tbody',null,
           renderRow(null,true),
           dates.length===0
-            ? ce('tr',null,ce('td',{colSpan:10,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
+            ? ce('tr',null,ce('td',{colSpan:13,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
                 'No spends data for this month.'))
             : dates.map(function(dt){ return renderRow(dt,false); })
         )
