@@ -627,10 +627,13 @@ function OverviewTable({rows, spendsRows, onControls}){
   }
 
   /* Unique trigger leads by brand and model from current rows */
+  /* T-CPL denominator = paid media trigger leads only (MS FB + Adwords),
+     matching the same denominator used in the Day-wise Spends tab. */
+  const PAID_SOURCES=new Set(['MS FB','Adwords']);
   const uniqueMap = useMemo(function(){
     const m={};
     for(const r of rows){
-      if(!r.isUnique) continue;
+      if(!r.isUnique||!PAID_SOURCES.has(r.source)) continue;
       if(!m[r.brand]) m[r.brand]={total:0,models:{}};
       m[r.brand].total++;
       m[r.brand].models[r.model]=(m[r.brand].models[r.model]||0)+1;
@@ -782,7 +785,7 @@ function OverviewTable({rows, spendsRows, onControls}){
 
   /* Total spends across all brands in current spends month */
   const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
-  const totalUnique=rows.filter(r=>r.isUnique).length;
+  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)).length;
 
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
