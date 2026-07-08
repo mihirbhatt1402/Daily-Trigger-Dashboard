@@ -1197,7 +1197,14 @@ function SpendsTab({spendsRows, rows, filters}){
           return false;
         });
       });
-      result.push(...(modelMatched.length?modelMatched:brandRows));
+      /* If no exact model match: fall back to catch-all rows (where model name
+         equals brand name, e.g. RE "Royal Enfield" or Harley "Harley"), NOT all
+         brand rows — otherwise RE "Bullet 350" filter would incorrectly include
+         Flying Flea spends that have their own dedicated model row. */
+      const catchAllRows=brandRows.filter(function(r){
+        return slugify(r.model||'')===slugify(r.brand||'');
+      });
+      result.push(...(modelMatched.length?modelMatched:(catchAllRows.length?catchAllRows:brandRows)));
     }
     return result;
   },[spendsRows,filters]);
