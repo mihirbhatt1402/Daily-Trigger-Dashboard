@@ -1460,12 +1460,14 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
   const totLeadOrder=brands.reduce((s,b)=>s+(parseFloat((cfg[b]||{}).leadOrder)||0),0);
   const totRevOrder=brands.reduce(function(s,b){
     const c=cfg[b]||{};
-    return s+(parseFloat(c.leadOrder)||0)*(parseFloat(c.rate)||0);
+    const dup=parseFloat(c.dup)||0;
+    return s+(parseFloat(c.leadOrder)||0)*(1-dup/100)*(parseFloat(c.rate)||0);
   },0);
   const totLeads=brands.reduce((s,b)=>s+(leadsMTD[b]||0),0);
   const totRevMTD=brands.reduce(function(s,b){
     const c=cfg[b]||{};
-    return s+(leadsMTD[b]||0)*(parseFloat(c.rate)||0);
+    const dup=parseFloat(c.dup)||0;
+    return s+(leadsMTD[b]||0)*(1-dup/100)*(parseFloat(c.rate)||0);
   },0);
   const totSpends=brands.reduce((s,b)=>s+(spendsAgg[b]||0),0);
 
@@ -1483,6 +1485,7 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
             ce('th',thS,'Lead Order'),
             ce('th',thS,'Revenue Order'),
             ce('th',thS,'Rate'),
+            ce('th',thS,'Dup%'),
             ce('th',thS,'Leads MTD'),
             ce('th',thS,'Revenue MTD'),
             ce('th',thS,'Spends MTD'),
@@ -1496,6 +1499,7 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
             ce('td',null,totLeadOrder?Nf(totLeadOrder):'—'),
             ce('td',null,fmtINR(totRevOrder)),
             ce('td',null,'—'),
+            ce('td',null,'—'),
             ce('td',null,Nf(totLeads)),
             ce('td',null,fmtINR(totRevMTD)),
             ce('td',null,fmtINR(totSpends)),
@@ -1505,9 +1509,11 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
             const c=cfg[brand]||{};
             const rate=parseFloat(c.rate)||0;
             const leadOrder=parseFloat(c.leadOrder)||0;
-            const revOrder=leadOrder*rate;
+            const dup=parseFloat(c.dup)||0;
+            const dupFactor=1-dup/100;
+            const revOrder=leadOrder*dupFactor*rate;
             const leads=leadsMTD[brand]||0;
-            const revMTD=leads*rate;
+            const revMTD=leads*dupFactor*rate;
             const spendsMTDv=spendsAgg[brand]||0;
             return ce('tr',{key:brand},
               ce('td',{className:'label'},brand),
@@ -1520,6 +1526,10 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
               ce('td',null,isAdmin
                 ?ce('input',Object.assign({},inputS,{value:c.rate||'',onChange:function(e){save(brand,'rate',e.target.value);}}))
                 :(rate?'₹'+Nf(rate):'—')),
+              /* Dup% — admin editable */
+              ce('td',null,isAdmin
+                ?ce('input',Object.assign({},inputS,{value:c.dup||'',placeholder:'0',onChange:function(e){save(brand,'dup',e.target.value);}}))
+                :(dup?dup+'%':'—')),
               ce('td',null,Nf(leads)),
               ce('td',null,fmtINR(revMTD)),
               ce('td',null,fmtINR(spendsMTDv)),
