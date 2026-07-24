@@ -1395,6 +1395,147 @@ function SpendsTab({spendsRows, rows, filters}){
   );
 }
 
+/* ── Revenue Tab ─────────────────────────────────────────────────── */
+function RevenueTab({spendsRows,rows,filters}){
+  const {useState:S,useEffect:E,useMemo:M}=React;
+  const [cfg,setCfg]=S({});
+
+  /* Load rates & lead orders from Firestore */
+  E(function(){
+    const unsub=fbDb.collection('settings').doc('revenueRates').onSnapshot(function(snap){
+      if(snap.exists) setCfg(snap.data()||{});
+    });
+    return unsub;
+  },[]);
+
+  /* Latest spends month */
+  const spendsMonth=M(function(){
+    if(!spendsRows||!spendsRows.length) return '';
+    const months=[...new Set(spendsRows.filter(r=>r.date).map(r=>r.date.slice(0,7)))].sort();
+    return months[months.length-1];
+  },[spendsRows]);
+
+  /* Brands present in spends this month, filtered by global brand filter */
+  const brands=M(function(){
+    const monthRows=(spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth));
+    const all=[...new Set(monthRows.map(r=>spendsBrandToLeads(r.brand)))].sort();
+    return filters.brand?all.filter(b=>b===filters.brand):all;
+  },[spendsRows,spendsMonth,filters]);
+
+  /* Spends MTD per brand */
+  const spendsAgg=M(function(){
+    const m={};
+    (spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth)).forEach(function(r){
+      const lb=spendsBrandToLeads(r.brand);
+      m[lb]=(m[lb]||0)+r.cost;
+    });
+    return m;
+  },[spendsRows,spendsMonth]);
+
+  /* Unique paid trigger leads MTD per brand (from global filtered rows) */
+  const PAID=new Set(['MS FB','Adwords']);
+  const leadsMTD=M(function(){
+    const m={};
+    rows.forEach(function(r){
+      if(!r.isUnique||!PAID.has(r.source)||!r.date||!r.date.startsWith(spendsMonth)) return;
+      m[r.brand]=(m[r.brand]||0)+1;
+    });
+    return m;
+  },[rows,spendsMonth]);
+
+  /* Persist a single field change for a brand */
+  function save(brand,field,val){
+    const next={...cfg,[brand]:{...(cfg[brand]||{}),[field]:val}};
+    setCfg(next);
+    fbDb.collection('settings').doc('revenueRates').set(next,{merge:false});
+  }
+
+  function fmtINR(n){ return n?'₹'+Nf(Math.round(n)):'—'; }
+  function fmtGM(rev,spends){
+    if(!rev) return '—';
+    const g=(rev-spends)/rev*100;
+    const color=g>=0?'#166534':'#9D174D';
+    return ce('span',{style:{color,fontWeight:700}},g.toFixed(1)+'%');
+  }
+
+  /* Totals */
+  const totLeadOrder=brands.reduce((s,b)=>s+(parseFloat((cfg[b]||{}).leadOrder)||0),0);
+  const totRevOrder=brands.reduce(function(s,b){
+    const c=cfg[b]||{};
+    return s+(parseFloat(c.leadOrder)||0)*(parseFloat(c.rate)||0);
+  },0);
+  const totLeads=brands.reduce((s,b)=>s+(leadsMTD[b]||0),0);
+  const totRevMTD=brands.reduce(function(s,b){
+    const c=cfg[b]||{};
+    return s+(leadsMTD[b]||0)*(parseFloat(c.rate)||0);
+  },0);
+  const totSpends=brands.reduce((s,b)=>s+(spendsAgg[b]||0),0);
+
+  const thS={style:{top:0}};
+  const inputS={type:'number',min:0,style:{width:90,border:'1px solid var(--violet-200)',borderRadius:4,
+    padding:'2px 6px',fontSize:10.5,fontFamily:"'DM Mono',monospace",textAlign:'right',
+    background:'#FAF5FF',outline:'none'}};
+
+  return ce('div',null,
+    ce('div',{className:'card scroll-x fade-up'},
+      ce('table',null,
+        ce('thead',null,
+          ce('tr',null,
+            ce('th',{...thS,className:'left'},'Account'),
+            ce('th',thS,'Lead Order'),
+            ce('th',thS,'Revenue Order'),
+            ce('th',thS,'Rate'),
+            ce('th',thS,'Leads MTD'),
+            ce('th',thS,'Revenue MTD'),
+            ce('th',thS,'Spends MTD'),
+            ce('th',thS,'GM%')
+          )
+        ),
+        ce('tbody',null,
+          /* Total row */
+          ce('tr',{className:'total-row'},
+            ce('td',{className:'label'},'Total'),
+            ce('td',null,totLeadOrder?Nf(totLeadOrder):'—'),
+            ce('td',null,fmtINR(totRevOrder)),
+            ce('td',null,'—'),
+            ce('td',null,Nf(totLeads)),
+            ce('td',null,fmtINR(totRevMTD)),
+            ce('td',null,fmtINR(totSpends)),
+            ce('td',null,fmtGM(totRevMTD,totSpends))
+          ),
+          brands.map(function(brand){
+            const c=cfg[brand]||{};
+            const rate=parseFloat(c.rate)||0;
+            const leadOrder=parseFloat(c.leadOrder)||0;
+            const revOrder=leadOrder*rate;
+            const leads=leadsMTD[brand]||0;
+            const revMTD=leads*rate;
+            const spendsMTDv=spendsAgg[brand]||0;
+            return ce('tr',{key:brand},
+              ce('td',{className:'label'},brand),
+              /* Lead Order — editable */
+              ce('td',null,ce('input',Object.assign({},inputS,{
+                value:c.leadOrder||'',
+                onChange:function(e){ save(brand,'leadOrder',e.target.value); }
+              }))),
+              ce('td',null,fmtINR(revOrder)),
+              /* Rate — editable */
+              ce('td',null,ce('input',Object.assign({},inputS,{
+                value:c.rate||'',
+                onChange:function(e){ save(brand,'rate',e.target.value); }
+              }))),
+              ce('td',null,Nf(leads)),
+              ce('td',null,fmtINR(revMTD)),
+              ce('td',null,fmtINR(spendsMTDv)),
+              ce('td',null,fmtGM(revMTD,spendsMTDv))
+            );
+          })
+        )
+      )
+    )
+  );
+}
+
 /* ── Main App ─────────────────────────────────────────────────────── */
 function App({topBar,isAdmin}){
   const [rows,setRows]=useState([]);
@@ -1486,7 +1627,8 @@ function App({topBar,isAdmin}){
           ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
           ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
-          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
+          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends'),
+          ce('button',{className:'tab-pill'+(tab==='revenue'?' active':''),onClick:()=>switchTab('revenue')},'Revenue')
         ),
         (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
@@ -1499,7 +1641,9 @@ function App({topBar,isAdmin}){
         ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
       tab==='duplicate'?
         ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
-        ce(SpendsTab,{spendsRows,rows:filtered,filters})
+      tab==='spends'?
+        ce(SpendsTab,{spendsRows,rows:filtered,filters}):
+        ce(RevenueTab,{spendsRows,rows:filtered,filters})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
