@@ -814,9 +814,7 @@ function OverviewTable({rows, spendsRows, onControls}){
   if(!brands.length) return ce('div',{className:'card',style:{padding:24,textAlign:'center'}},
     ce('span',{className:'muted'},'No matching leads for the current filters.'));
 
-  const spendsTh={style:{textAlign:'right',padding:'4px 8px',fontSize:12,fontWeight:600,background:'#EDE9FE',color:'#5B21B6',whiteSpace:'nowrap',top:24}};
-  const spendsTd={style:{textAlign:'right',padding:'4px 8px',fontSize:12,whiteSpace:'nowrap'}};
-  const spendsGrpTh={style:{textAlign:'center',padding:'4px 8px',fontSize:12,fontWeight:700,background:'#DDD6FE',color:'#4C1D95',whiteSpace:'nowrap',borderLeft:'2px solid #C4B5FD'}};
+  const spendsBorder={borderLeft:'2px solid #C4B5FD'};
 
   /* Total spends across all brands in current spends month */
   const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
@@ -829,14 +827,14 @@ function OverviewTable({rows, spendsRows, onControls}){
           ce('tr',null,
             th(0,0,'Brand',{className:'left',rowSpan:2}),
             headerGroups.map(g=>th(0,g.colStart+1,g.label,{colSpan:g.span})),
-            spendsMonthLabel?ce('th',{colSpan:2,style:{...spendsGrpTh.style,top:0}},
+            spendsMonthLabel?ce('th',{colSpan:2,style:{...spendsBorder,top:0}},
               'Spends ('+spendsMonthLabel+')'):null
           ),
           ce('tr',null,
             cols.map((col,i)=>subHeaderCell(col,i)),
             spendsMonthLabel?[
-              ce('th',{key:'sc',style:{...spendsTh.style,borderLeft:'2px solid #C4B5FD'}},'Total ₹'),
-              ce('th',{key:'tc',style:spendsTh.style},'T-CPL')
+              ce('th',{key:'sc',style:{...spendsBorder,top:24}},'Total ₹'),
+              ce('th',{key:'tc',style:{top:24}},'T-CPL')
             ]:null
           )
         ),
@@ -845,8 +843,8 @@ function OverviewTable({rows, spendsRows, onControls}){
             td(2,0,'Total',{className:'label'}),
             cols.map((col,i)=>td(2,i+1,Nf(colTotals[i]))),
             spendsMonthLabel?[
-              ce('td',{key:'ts',style:{...spendsTd.style,fontWeight:700,borderLeft:'2px solid #C4B5FD'}},fmtSpend(totalBrandSpend)),
-              ce('td',{key:'tt',style:{...spendsTd.style,fontWeight:700}},fmtTcpl(totalBrandSpend,totalUnique))
+              ce('td',{key:'ts',style:{...spendsBorder,fontWeight:700}},fmtSpend(totalBrandSpend)),
+              ce('td',{key:'tt',style:{fontWeight:700}},fmtTcpl(totalBrandSpend,totalUnique))
             ]:null
           ),
           displayRows.map((dr,i)=>{
@@ -868,8 +866,8 @@ function OverviewTable({rows, spendsRows, onControls}){
                 const bs=(spendsAgg[dr.brand]||{}).total||0;
                 const bu=(uniqueMap[dr.brand]||{}).total||0;
                 spendCells=[
-                  ce('td',{key:'bs',style:{...spendsTd.style,fontWeight:700,borderLeft:'2px solid #C4B5FD'}},fmtSpend(bs)),
-                  ce('td',{key:'bt',style:{...spendsTd.style,fontWeight:700}},fmtTcpl(bs,bu))
+                  ce('td',{key:'bs',style:{...spendsBorder,fontWeight:700}},fmtSpend(bs)),
+                  ce('td',{key:'bt',style:{fontWeight:700}},fmtTcpl(bs,bu))
                 ];
               } else {
                 const ms=getModelSpend(dr.brand,dr.model);
@@ -877,16 +875,16 @@ function OverviewTable({rows, spendsRows, onControls}){
                   /* Model has its own specific spend row (e.g. RE Flying Flea) */
                   const mu=(uniqueMap[dr.brand]&&uniqueMap[dr.brand].models[dr.model])||0;
                   spendCells=[
-                    ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},fmtSpend(ms)),
-                    ce('td',{key:'mt',style:spendsTd.style},fmtTcpl(ms,mu))
+                    ce('td',{key:'ms',style:spendsBorder},fmtSpend(ms)),
+                    ce('td',{key:'mt'},fmtTcpl(ms,mu))
                   ];
                 } else {
                   /* Check if this is the top catch-all model for its brand */
                   const bca=brandCatchAllInfo[dr.brand];
                   const isCaTop=bca&&bca.topModel===dr.model;
                   spendCells=[
-                    ce('td',{key:'ms',style:{...spendsTd.style,borderLeft:'2px solid #C4B5FD'}},isCaTop?fmtSpend(bca.spend):'—'),
-                    ce('td',{key:'mt',style:spendsTd.style},isCaTop?fmtTcpl(bca.spend,bca.totalLeads):'—')
+                    ce('td',{key:'ms',style:spendsBorder},isCaTop?fmtSpend(bca.spend):'—'),
+                    ce('td',{key:'mt'},isCaTop?fmtTcpl(bca.spend,bca.totalLeads):'—')
                   ];
                 }
               }
