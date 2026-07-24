@@ -1396,7 +1396,7 @@ function SpendsTab({spendsRows, rows, filters}){
 }
 
 /* ── Revenue Tab ─────────────────────────────────────────────────── */
-function RevenueTab({spendsRows,rows,filters}){
+function RevenueTab({spendsRows,rows,filters,isAdmin}){
   const {useState:S,useEffect:E,useMemo:M}=React;
   const [cfg,setCfg]=S({});
 
@@ -1511,17 +1511,15 @@ function RevenueTab({spendsRows,rows,filters}){
             const spendsMTDv=spendsAgg[brand]||0;
             return ce('tr',{key:brand},
               ce('td',{className:'label'},brand),
-              /* Lead Order — editable */
-              ce('td',null,ce('input',Object.assign({},inputS,{
-                value:c.leadOrder||'',
-                onChange:function(e){ save(brand,'leadOrder',e.target.value); }
-              }))),
+              /* Lead Order — admin editable */
+              ce('td',null,isAdmin
+                ?ce('input',Object.assign({},inputS,{value:c.leadOrder||'',onChange:function(e){save(brand,'leadOrder',e.target.value);}}))
+                :(leadOrder?Nf(leadOrder):'—')),
               ce('td',null,fmtINR(revOrder)),
-              /* Rate — editable */
-              ce('td',null,ce('input',Object.assign({},inputS,{
-                value:c.rate||'',
-                onChange:function(e){ save(brand,'rate',e.target.value); }
-              }))),
+              /* Rate — admin editable */
+              ce('td',null,isAdmin
+                ?ce('input',Object.assign({},inputS,{value:c.rate||'',onChange:function(e){save(brand,'rate',e.target.value);}}))
+                :(rate?'₹'+Nf(rate):'—')),
               ce('td',null,Nf(leads)),
               ce('td',null,fmtINR(revMTD)),
               ce('td',null,fmtINR(spendsMTDv)),
@@ -1641,7 +1639,7 @@ function App({topBar,isAdmin}){
         ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
       tab==='spends'?
         ce(SpendsTab,{spendsRows,rows:filtered,filters}):
-        ce(RevenueTab,{spendsRows,rows:filtered,filters})
+        ce(RevenueTab,{spendsRows,rows:filtered,filters,isAdmin})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
