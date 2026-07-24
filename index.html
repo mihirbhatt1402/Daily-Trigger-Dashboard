@@ -1453,7 +1453,7 @@ function App({topBar,isAdmin}){
   const uniqueLeads = filtered.filter(r=>r.isUnique).length;
   const duplicateLeads = totalLeads-uniqueLeads;
 
-  return ce('div',{style:{maxWidth:1280,margin:'0 auto',padding:'20px 24px'}},
+  return ce('div',{style:{maxWidth:'100%',margin:'0 auto',padding:'20px 24px'}},
     topBar,
     ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}},
       ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
