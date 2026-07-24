@@ -1340,14 +1340,17 @@ function SpendsTab({spendsRows, rows, filters}){
     return ce('tr',{key:isTotal?'__total':dt,className:isTotal?'total-row':''},
       ce('td',{className:'label'},isTotal?'Total':formatDateDMY(dt)),
       ce('td',null,fmtCost(fbCost)),
+      ce('td',null,fbGen||'—'),
       ce('td',null,fmtCpl(fbCost,fbGen)),
       ce('td',null,fmtCpl(fbCost,fbTrig)),
       ce('td',null,fmtUtil(fbTrig,fbGen)),
       ce('td',null,fmtCost(awCost)),
+      ce('td',null,awGen||'—'),
       ce('td',null,fmtCpl(awCost,awGen)),
       ce('td',null,fmtCpl(awCost,awTrig)),
       ce('td',null,fmtUtil(awTrig,awGen)),
       ce('td',null,fmtCost(totCost)),
+      ce('td',null,totGen||'—'),
       ce('td',null,fmtCpl(totCost,totGen)),
       ce('td',null,fmtCpl(totCost,totTrig)),
       ce('td',null,fmtUtil(totTrig,totGen))
@@ -1370,20 +1373,20 @@ function SpendsTab({spendsRows, rows, filters}){
         ce('thead',null,
           ce('tr',null,
             ce('th',{className:'left',rowSpan:2},'Date'),
-            ce('th',{colSpan:4},'MS FB'),
-            ce('th',{colSpan:4},'Adwords'),
-            ce('th',{colSpan:4},'Total')
+            ce('th',{colSpan:5},'MS FB'),
+            ce('th',{colSpan:5},'Adwords'),
+            ce('th',{colSpan:5},'Total')
           ),
           ce('tr',null,
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
-            ce('th',null,'Spends'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%')
+            ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
+            ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
+            ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%')
           )
         ),
         ce('tbody',null,
           renderRow(null,true),
           dates.length===0
-            ? ce('tr',null,ce('td',{colSpan:13,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
+            ? ce('tr',null,ce('td',{colSpan:16,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
                 'No spends data for this month.'))
             : dates.map(function(dt){ return renderRow(dt,false); })
         )
