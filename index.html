@@ -1621,12 +1621,12 @@ function App({topBar,isAdmin}){
       ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,
         borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8}},
         ce('div',{style:{display:'flex',gap:4}},
-          ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Summary'),
-          ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Overview'),
+          ce('button',{className:'tab-pill'+(tab==='revenue'?' active':''),onClick:()=>switchTab('revenue')},'Margin Tracking'),
+          ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Daily Run Rate'),
+          ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Account wise Summary'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
           ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
-          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends'),
-          ce('button',{className:'tab-pill'+(tab==='revenue'?' active':''),onClick:()=>switchTab('revenue')},'Revenue')
+          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
         ),
         (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
