@@ -1415,12 +1415,11 @@ function RevenueTab({spendsRows,rows,filters}){
     return months[months.length-1];
   },[spendsRows]);
 
-  /* Brands present in spends this month, filtered by global brand filter */
+  /* Brands from the trigger/leads sheet brand column */
   const brands=M(function(){
-    const monthRows=(spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth));
-    const all=[...new Set(monthRows.map(r=>spendsBrandToLeads(r.brand)))].sort();
+    const all=[...new Set(rows.map(r=>r.brand).filter(Boolean))].sort();
     return filters.brand?all.filter(b=>b===filters.brand):all;
-  },[spendsRows,spendsMonth,filters]);
+  },[rows,filters]);
 
   /* Spends MTD per brand */
   const spendsAgg=M(function(){
