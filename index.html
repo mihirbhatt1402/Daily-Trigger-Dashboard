@@ -1432,12 +1432,11 @@ function RevenueTab({spendsRows,rows,filters}){
     return m;
   },[spendsRows,spendsMonth]);
 
-  /* Unique paid trigger leads MTD per brand (from global filtered rows) */
-  const PAID=new Set(['MS FB','Adwords']);
+  /* All unique trigger leads MTD per brand across all sources */
   const leadsMTD=M(function(){
     const m={};
     rows.forEach(function(r){
-      if(!r.isUnique||!PAID.has(r.source)||!r.date||!r.date.startsWith(spendsMonth)) return;
+      if(!r.isUnique||!r.date||!r.date.startsWith(spendsMonth)) return;
       m[r.brand]=(m[r.brand]||0)+1;
     });
     return m;
