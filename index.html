@@ -1462,7 +1462,10 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
     const c=cfg[b]||{};
     return s+(parseFloat(c.leadOrder)||0)*(parseFloat(c.rate)||0);
   },0);
-  const totLeads=brands.reduce((s,b)=>s+(leadsMTD[b]||0),0);
+  const totLeads=brands.reduce(function(s,b){
+    const dup=parseFloat((cfg[b]||{}).dup)||0;
+    return s+Math.round((leadsMTD[b]||0)*(1-dup/100));
+  },0);
   const totRevMTD=brands.reduce(function(s,b){
     const c=cfg[b]||{};
     const dup=parseFloat(c.dup)||0;
@@ -1511,8 +1514,9 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
             const dup=parseFloat(c.dup)||0;
             const dupFactor=1-dup/100;
             const revOrder=leadOrder*rate;
-            const leads=leadsMTD[brand]||0;
-            const revMTD=leads*dupFactor*rate;
+            const rawLeads=leadsMTD[brand]||0;
+            const leads=Math.round(rawLeads*dupFactor);
+            const revMTD=rate*leads;
             const spendsMTDv=spendsAgg[brand]||0;
             return ce('tr',{key:brand},
               ce('td',{className:'label'},brand),
