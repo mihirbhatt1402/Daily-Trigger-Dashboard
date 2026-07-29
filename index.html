@@ -1280,11 +1280,12 @@ function SpendsTab({spendsRows, rows, filters}){
       const bt=String(r.buType||'').trim();
       const isNA=bt==='#N/A'||bt==='';
       const acct=String(r.accountName||'').trim().toLowerCase();
-      /* BU Type #N/A + Account name "Media Sales -AUTO" → MS FB */
-      const ch=bt==='Media Sales-FB'||(isNA&&acct.includes('auto'))?'fb':
+      /* Check whatsapp first so it isn't caught by the #N/A fallbacks */
+      const ch=bt.toLowerCase().replace(/\s/g,'').includes('whatsapp')?'wa':
+               bt==='Media Sales-FB'||(isNA&&acct.includes('auto'))?'fb':
                bt==='Media Sales-GA'||(isNA&&!acct.includes('auto'))?'adwords':null;
       if(!ch) continue;
-      if(!m[r.date]) m[r.date]={fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}};
+      if(!m[r.date]) m[r.date]={fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0},wa:{cost:0,genLeads:0}};
       m[r.date][ch].cost+=r.cost;
       m[r.date][ch].genLeads+=r.leads;
     }
@@ -1294,9 +1295,9 @@ function SpendsTab({spendsRows, rows, filters}){
   const triggerMap=useMemo(function(){
     const m={};
     for(const r of rows.filter(r=>r.isUnique&&r.date&&r.date.startsWith(selMonth))){
-      const ch=r.source==='MS FB'?'fb':r.source==='Adwords'?'adwords':null;
+      const ch=r.source==='MS FB'?'fb':r.source==='Adwords'?'adwords':r.source==='WHATSAPP_MKT'?'wa':null;
       if(!ch) continue;
-      if(!m[r.date]) m[r.date]={fb:0,adwords:0};
+      if(!m[r.date]) m[r.date]={fb:0,adwords:0,wa:0};
       m[r.date][ch]++;
     }
     return m;
@@ -1307,20 +1308,19 @@ function SpendsTab({spendsRows, rows, filters}){
   },[spendMap]);
 
   const totals=useMemo(function(){
-    let fbCost=0,fbGen=0,fbTrig=0,awCost=0,awGen=0,awTrig=0;
+    let fbCost=0,fbGen=0,fbTrig=0,awCost=0,awGen=0,awTrig=0,waCost=0,waGen=0,waTrig=0;
     for(const dt of dates){
       const sp=spendMap[dt];
-      const tr=triggerMap[dt]||{fb:0,adwords:0};
+      const tr=triggerMap[dt]||{fb:0,adwords:0,wa:0};
       fbCost+=sp.fb.cost; fbGen+=sp.fb.genLeads; fbTrig+=tr.fb;
       awCost+=sp.adwords.cost; awGen+=sp.adwords.genLeads; awTrig+=tr.adwords;
+      waCost+=sp.wa.cost; waGen+=sp.wa.genLeads; waTrig+=tr.wa;
     }
-    /* Include trigger leads on dates that have leads but no spends (e.g. today),
-       so Total T-CPL denominator matches Overview tab exactly. */
     for(const dt of Object.keys(triggerMap)){
-      if(!spendMap[dt]){ fbTrig+=triggerMap[dt].fb; awTrig+=triggerMap[dt].adwords; }
+      if(!spendMap[dt]){ fbTrig+=triggerMap[dt].fb; awTrig+=triggerMap[dt].adwords; waTrig+=triggerMap[dt].wa; }
     }
-    return {fbCost,fbGen,fbTrig,awCost,awGen,awTrig,
-      totCost:fbCost+awCost,totGen:fbGen+awGen,totTrig:fbTrig+awTrig};
+    return {fbCost,fbGen,fbTrig,awCost,awGen,awTrig,waCost,waGen,waTrig,
+      totCost:fbCost+awCost+waCost,totGen:fbGen+awGen+waGen,totTrig:fbTrig+awTrig+waTrig};
   },[dates,spendMap,triggerMap]);
 
   function fmtCost(n){ return n?'₹'+Nf(Math.round(n)):'—'; }
@@ -1328,15 +1328,18 @@ function SpendsTab({spendsRows, rows, filters}){
   function fmtUtil(trig,gen){ return (gen&&trig!=null)?Math.round(trig/gen*100)+'%':'—'; }
 
   function renderRow(dt,isTotal){
-    const sp=isTotal?null:(spendMap[dt]||{fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0}});
-    const tr=isTotal?null:(triggerMap[dt]||{fb:0,adwords:0});
+    const sp=isTotal?null:(spendMap[dt]||{fb:{cost:0,genLeads:0},adwords:{cost:0,genLeads:0},wa:{cost:0,genLeads:0}});
+    const tr=isTotal?null:(triggerMap[dt]||{fb:0,adwords:0,wa:0});
     const fbCost=isTotal?totals.fbCost:sp.fb.cost;
     const fbGen=isTotal?totals.fbGen:sp.fb.genLeads;
     const fbTrig=isTotal?totals.fbTrig:tr.fb;
     const awCost=isTotal?totals.awCost:sp.adwords.cost;
     const awGen=isTotal?totals.awGen:sp.adwords.genLeads;
     const awTrig=isTotal?totals.awTrig:tr.adwords;
-    const totCost=fbCost+awCost,totGen=fbGen+awGen,totTrig=fbTrig+awTrig;
+    const waCost=isTotal?totals.waCost:sp.wa.cost;
+    const waGen=isTotal?totals.waGen:sp.wa.genLeads;
+    const waTrig=isTotal?totals.waTrig:tr.wa;
+    const totCost=fbCost+awCost+waCost,totGen=fbGen+awGen+waGen,totTrig=fbTrig+awTrig+waTrig;
     return ce('tr',{key:isTotal?'__total':dt,className:isTotal?'total-row':''},
       ce('td',{className:'label'},isTotal?'Total':formatDateDMY(dt)),
       ce('td',null,fmtCost(fbCost)),
@@ -1349,6 +1352,11 @@ function SpendsTab({spendsRows, rows, filters}){
       ce('td',null,fmtCpl(awCost,awGen)),
       ce('td',null,fmtCpl(awCost,awTrig)),
       ce('td',null,fmtUtil(awTrig,awGen)),
+      ce('td',null,fmtCost(waCost)),
+      ce('td',null,waGen?Nf(Math.round(waGen)):'—'),
+      ce('td',null,fmtCpl(waCost,waGen)),
+      ce('td',null,fmtCpl(waCost,waTrig)),
+      ce('td',null,fmtUtil(waTrig,waGen)),
       ce('td',null,fmtCost(totCost)),
       ce('td',null,totGen?Nf(Math.round(totGen)):'—'),
       ce('td',null,fmtCpl(totCost,totGen)),
@@ -1375,9 +1383,11 @@ function SpendsTab({spendsRows, rows, filters}){
             ce('th',{className:'left',rowSpan:2},'Date'),
             ce('th',{colSpan:5},'MS FB'),
             ce('th',{colSpan:5},'Adwords'),
+            ce('th',{colSpan:5},'Paid Whatsapp'),
             ce('th',{colSpan:5},'Total')
           ),
           ce('tr',null,
+            ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
             ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
             ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%'),
             ce('th',null,'Spends'), ce('th',null,'Gen Leads'), ce('th',null,'G-CPL'), ce('th',null,'T-CPL'), ce('th',null,'Util%')
@@ -1386,7 +1396,7 @@ function SpendsTab({spendsRows, rows, filters}){
         ce('tbody',null,
           renderRow(null,true),
           dates.length===0
-            ? ce('tr',null,ce('td',{colSpan:16,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
+            ? ce('tr',null,ce('td',{colSpan:21,className:'label',style:{padding:20,textAlign:'center',fontWeight:400,color:'#9CA3AF'}},
                 'No spends data for this month.'))
             : dates.map(function(dt){ return renderRow(dt,false); })
         )
