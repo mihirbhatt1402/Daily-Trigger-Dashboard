@@ -1295,7 +1295,7 @@ function SpendsTab({spendsRows, rows, filters}){
   const triggerMap=useMemo(function(){
     const m={};
     for(const r of rows.filter(r=>r.isUnique&&r.date&&r.date.startsWith(selMonth))){
-      const ch=r.source==='MS FB'?'fb':r.source==='Adwords'?'adwords':r.source==='WHATSAPP_MKT'?'wa':null;
+      const ch=r.source==='MS FB'?'fb':r.source==='Adwords'?'adwords':(r.source||'').toUpperCase().includes('WHATSAPP')?'wa':null;
       if(!ch) continue;
       if(!m[r.date]) m[r.date]={fb:0,adwords:0,wa:0};
       m[r.date][ch]++;
