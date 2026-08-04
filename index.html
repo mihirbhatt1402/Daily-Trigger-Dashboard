@@ -360,7 +360,7 @@ function MultiSelect({label, options, selected, onChange}){
 /* ── Filter bar (brand single-select / model, lead type, city, state, cam name,
    is uploaded multi-select) — each field's option list is narrowed by every
    OTHER currently-active filter, so dropdowns only ever show relevant values ── */
-function FilterBar({rows, filters, setFilters}){
+function FilterBar({rows, filters, setFilters, selMonth, setSelMonth, availableMonths}){
   function matches(r, excludeKey){
     return (excludeKey==='brand'||!filters.brand||r.brand===filters.brand) &&
       (excludeKey==='model'||!filters.model.length||filters.model.includes(r.model)) &&
@@ -398,7 +398,15 @@ function FilterBar({rows, filters, setFilters}){
   },[models,leadTypes,states,cities,camNames,uploadFlags]);
 
   return ce('div',{className:'filter-bar'},
-    ce('label',null,'Filters'),
+    ce('label',null,'FILTERS'),
+    availableMonths&&availableMonths.length?ce('select',{
+      value:selMonth,
+      onChange:function(e){setSelMonth(e.target.value);},
+      style:{fontWeight:600}
+    },availableMonths.map(function(m){
+      return ce('option',{key:m,value:m},
+        new Date(m+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'}));
+    })):null,
     ce('select',{value:filters.brand,onChange:e=>setFilters(f=>({...f,brand:e.target.value,model:[]}))},
       ce('option',{value:''},'All Brands'),
       brands.map(o=>ce('option',{key:o,value:o},o))
@@ -579,7 +587,7 @@ function sumSourceCounts(counts){
 /* ── Overview table: Brand × Source (each split into Unique/Duplicate
    sub-columns), brand rows expand/collapse into model rows. Same
    drag-select + copy-as-TSV behavior as GridTable. ── */
-function OverviewTable({rows, spendsRows, onControls}){
+function OverviewTable({rows, spendsRows, selMonth, onControls}){
   const [expanded,setExpanded]=useState(new Set());
   const [sel,setSel]=useState(null);
   const draggingRef=useRef(false);
@@ -590,19 +598,14 @@ function OverviewTable({rows, spendsRows, onControls}){
   const brands = useMemo(()=>Object.keys(agg).sort((a,b)=>sumSourceCounts(agg[b].total)-sumSourceCounts(agg[a].total)),[agg]);
 
   /* ── Spends aggregation ── */
-  const spendsMonth = useMemo(function(){
-    const ms=[...new Set((spendsRows||[]).map(r=>r.date.slice(0,7)))].sort();
-    return ms[ms.length-1]||'';
-  },[spendsRows]);
-
   const spendsMonthLabel = useMemo(function(){
-    if(!spendsMonth) return '';
-    return new Date(spendsMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
-  },[spendsMonth]);
+    if(!selMonth) return '';
+    return new Date(selMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
+  },[selMonth]);
 
   const spendsAgg = useMemo(function(){
     const byBrand={};
-    const monthRows=(spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth));
+    const monthRows=(spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth));
     for(const r of monthRows){
       const lb=spendsBrandToLeads(r.brand);
       if(!byBrand[lb]) byBrand[lb]={total:0,rows:[]};
@@ -610,7 +613,7 @@ function OverviewTable({rows, spendsRows, onControls}){
       byBrand[lb].rows.push(r);
     }
     return byBrand;
-  },[spendsRows,spendsMonth]);
+  },[spendsRows,selMonth]);
 
   function getModelSpend(brand,model){
     const ba=spendsAgg[brand];
@@ -642,13 +645,13 @@ function OverviewTable({rows, spendsRows, onControls}){
     for(const r of rows){
       if(!r.isUnique||!PAID_SOURCES.has(r.source)) continue;
       /* Align T-CPL denominator to the same month shown in spendsAgg */
-      if(spendsMonth&&r.date&&!r.date.startsWith(spendsMonth)) continue;
+      if(selMonth&&r.date&&!r.date.startsWith(selMonth)) continue;
       if(!m[r.brand]) m[r.brand]={total:0,models:{}};
       m[r.brand].total++;
       m[r.brand].models[r.model]=(m[r.brand].models[r.model]||0)+1;
     }
     return m;
-  },[rows,spendsMonth]);
+  },[rows,selMonth]);
 
   /* For brands whose spends are aggregated in one catch-all row (e.g. RE all models
      except Flying Flea), find the model with the most paid unique leads and show the
@@ -818,7 +821,7 @@ function OverviewTable({rows, spendsRows, onControls}){
 
   /* Total spends across all brands in current spends month */
   const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
-  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)&&(!spendsMonth||r.date.startsWith(spendsMonth))).length;
+  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)).length;
 
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
@@ -1210,7 +1213,7 @@ function parseSpends(raw){
 }
 
 /* ── Spends Tab ──────────────────────────────────────────────────── */
-function SpendsTab({spendsRows, rows, filters}){
+function SpendsTab({spendsRows, rows, filters, selMonth}){
   /* Filter by brand, then model with per-brand fallback:
      if no spends model matches the leads model filter for a given brand
      (e.g. Ola whose spends are brand-level "Ola Electric"), show all
@@ -1255,15 +1258,6 @@ function SpendsTab({spendsRows, rows, filters}){
     }
     return result;
   },[spendsRows,filters]);
-
-  const months=useMemo(function(){
-    return [...new Set(filteredSpends.map(r=>r.date.slice(0,7)))].sort();
-  },[filteredSpends]);
-
-  const [selMonth,setSelMonth]=useState('');
-  useEffect(function(){
-    if(months.length) setSelMonth(m=>m||months[months.length-1]);
-  },[months]);
 
   const monthLabel=useMemo(function(){
     if(!selMonth) return '';
@@ -1368,13 +1362,7 @@ function SpendsTab({spendsRows, rows, filters}){
   return ce('div',null,
     ce('div',{style:{display:'flex',alignItems:'center',gap:10,marginBottom:10,flexWrap:'wrap'}},
       ce('span',{style:{fontSize:12,fontWeight:700,color:'var(--violet-d)',textTransform:'uppercase',letterSpacing:'.06em'}},
-        'Day-wise Spends'+(monthLabel?' — '+monthLabel:'')),
-      ce('select',{value:selMonth,onChange:function(e){setSelMonth(e.target.value);}},
-        months.map(function(mo){
-          return ce('option',{key:mo,value:mo},
-            new Date(mo+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'}));
-        })
-      )
+        'Day-wise Spends'+(monthLabel?' — '+monthLabel:''))
     ),
     ce('div',{className:'card scroll-x fade-up'},
       ce('table',null,
@@ -1406,7 +1394,7 @@ function SpendsTab({spendsRows, rows, filters}){
 }
 
 /* ── Revenue Tab ─────────────────────────────────────────────────── */
-function RevenueTab({spendsRows,rows,filters,isAdmin}){
+function RevenueTab({spendsRows,rows,filters,isAdmin,selMonth}){
   const {useState:S,useEffect:E,useMemo:M}=React;
   const [cfg,setCfg]=S({});
 
@@ -1418,13 +1406,6 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
     return unsub;
   },[]);
 
-  /* Latest spends month */
-  const spendsMonth=M(function(){
-    if(!spendsRows||!spendsRows.length) return '';
-    const months=[...new Set(spendsRows.filter(r=>r.date).map(r=>r.date.slice(0,7)))].sort();
-    return months[months.length-1];
-  },[spendsRows]);
-
   /* Brands from the trigger/leads sheet brand column */
   const brands=M(function(){
     const all=[...new Set(rows.map(r=>r.brand).filter(Boolean))].sort();
@@ -1434,22 +1415,22 @@ function RevenueTab({spendsRows,rows,filters,isAdmin}){
   /* Spends MTD per brand */
   const spendsAgg=M(function(){
     const m={};
-    (spendsRows||[]).filter(r=>spendsMonth&&r.date.startsWith(spendsMonth)).forEach(function(r){
+    (spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth)).forEach(function(r){
       const lb=spendsBrandToLeads(r.brand);
       m[lb]=(m[lb]||0)+r.cost;
     });
     return m;
-  },[spendsRows,spendsMonth]);
+  },[spendsRows,selMonth]);
 
   /* All unique trigger leads MTD per brand across all sources */
   const leadsMTD=M(function(){
     const m={};
     rows.forEach(function(r){
-      if(!r.isUnique||!r.date||!r.date.startsWith(spendsMonth)) return;
+      if(!r.isUnique||!r.date||!r.date.startsWith(selMonth)) return;
       m[r.brand]=(m[r.brand]||0)+1;
     });
     return m;
-  },[rows,spendsMonth]);
+  },[rows,selMonth]);
 
   /* Persist a single field change for a brand */
   function save(brand,field,val){
@@ -1565,7 +1546,22 @@ function App({topBar,isAdmin}){
   const [tab,setTab]=useState('overview');
   const [filters,setFilters]=useState({brand:'',model:[],leadType:[],state:[],city:[],camName:[],isUploaded:[]});
   const [tableControls,setTableControls]=useState(null);
+  const [selMonth,setSelMonth]=useState('');
   function switchTab(t){ setTableControls(null); setTab(t); }
+
+  /* Union of months from trigger data and spends data */
+  const availableMonths=useMemo(function(){
+    const s=new Set();
+    rows.filter(r=>r.date).forEach(r=>s.add(r.date.slice(0,7)));
+    spendsRows.filter(r=>r.date).forEach(r=>s.add(r.date.slice(0,7)));
+    return [...s].sort();
+  },[rows,spendsRows]);
+
+  /* Auto-select latest month on data load; preserve valid selection across reloads */
+  useEffect(function(){
+    if(availableMonths.length)
+      setSelMonth(function(m){ return (m&&availableMonths.includes(m))?m:availableMonths[availableMonths.length-1]; });
+  },[availableMonths]);
 
   const sync=useCallback(async function(){
     setSyncing(true); setError('');
@@ -1609,11 +1605,16 @@ function App({topBar,isAdmin}){
     (!filters.isUploaded.length||filters.isUploaded.includes(r.isUploaded))
   ),[rows,filters]);
 
-  const triggerPivot = useMemo(()=>pivot(filtered, r=>r.isUnique), [filtered]);
-  const duplicatePivot = useMemo(()=>pivot(filtered, r=>!r.isUnique), [filtered]);
+  /* Month-scoped slice — drives all tabs and KPI tiles */
+  const filteredByMonth=useMemo(()=>
+    filtered.filter(r=>!selMonth||(r.date&&r.date.startsWith(selMonth))),
+  [filtered,selMonth]);
 
-  const totalLeads = filtered.length;
-  const uniqueLeads = filtered.filter(r=>r.isUnique).length;
+  const triggerPivot = useMemo(()=>pivot(filteredByMonth, r=>r.isUnique), [filteredByMonth]);
+  const duplicatePivot = useMemo(()=>pivot(filteredByMonth, r=>!r.isUnique), [filteredByMonth]);
+
+  const totalLeads = filteredByMonth.length;
+  const uniqueLeads = filteredByMonth.filter(r=>r.isUnique).length;
   const duplicateLeads = totalLeads-uniqueLeads;
 
   return ce('div',{style:{maxWidth:'100%',margin:'0 auto',padding:'20px 24px'}},
@@ -1638,7 +1639,7 @@ function App({topBar,isAdmin}){
         ce('div',{className:'kpi c-pink'},ce('div',{className:'kpi-label'},'Duplicate Leads'),ce('div',{className:'kpi-value'},Nf(duplicateLeads))),
         ce('div',{className:'kpi c-peach'},ce('div',{className:'kpi-label'},'Duplicate %'),ce('div',{className:'kpi-value'},Pf(totalLeads?duplicateLeads/totalLeads*100:0)))
       ),
-      ce(FilterBar,{rows, filters, setFilters}),
+      ce(FilterBar,{rows, filters, setFilters, selMonth, setSelMonth, availableMonths}),
       ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,
         borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8}},
         ce('div',{style:{display:'flex',gap:4}},
@@ -1653,16 +1654,16 @@ function App({topBar,isAdmin}){
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
       ),
       tab==='summary'?
-        ce(SummaryTab,{rows:filtered,isAdmin}):
+        ce(SummaryTab,{rows:filteredByMonth,isAdmin}):
       tab==='overview'?
-        ce(OverviewTable,{rows:filtered, spendsRows, onControls:setTableControls}):
+        ce(OverviewTable,{rows:filteredByMonth, spendsRows, selMonth, onControls:setTableControls}):
       tab==='trigger'?
         ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
       tab==='duplicate'?
         ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
       tab==='spends'?
-        ce(SpendsTab,{spendsRows,rows:filtered,filters}):
-        ce(RevenueTab,{spendsRows,rows:filtered,filters,isAdmin})
+        ce(SpendsTab,{spendsRows,rows:filteredByMonth,filters,selMonth}):
+        ce(RevenueTab,{spendsRows,rows:filteredByMonth,filters,isAdmin,selMonth})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
 }
