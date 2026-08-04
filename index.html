@@ -1549,13 +1549,12 @@ function App({topBar,isAdmin}){
   const [selMonth,setSelMonth]=useState('');
   function switchTab(t){ setTableControls(null); setTab(t); }
 
-  /* Union of months from trigger data and spends data */
+  /* Months present in the trigger sheet — only these appear in the month filter */
   const availableMonths=useMemo(function(){
     const s=new Set();
     rows.filter(r=>r.date).forEach(r=>s.add(r.date.slice(0,7)));
-    spendsRows.filter(r=>r.date).forEach(r=>s.add(r.date.slice(0,7)));
     return [...s].sort();
-  },[rows,spendsRows]);
+  },[rows]);
 
   /* Auto-select latest month on data load; preserve valid selection across reloads */
   useEffect(function(){
