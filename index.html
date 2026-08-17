@@ -642,13 +642,13 @@ function OverviewTable({rows, spendsRows, selMonth, onControls}){
   }
 
   /* Unique trigger leads by brand and model from current rows */
-  /* T-CPL denominator = paid media trigger leads only (MS FB + Adwords),
-     matching the same denominator used in the Day-wise Spends tab. */
-  const PAID_SOURCES=new Set(['MS FB','Adwords']);
+  /* T-CPL denominator = paid media trigger leads (MS FB + Adwords + WhatsApp),
+     matching the same three channels tracked in the Day-wise Spends tab. */
+  function isPaid(src){ const s=(src||'').trim(); return s==='MS FB'||s==='Adwords'||s.toUpperCase().includes('WHATSAPP'); }
   const uniqueMap = useMemo(function(){
     const m={};
     for(const r of rows){
-      if(!r.isUnique||!PAID_SOURCES.has(r.source)) continue;
+      if(!r.isUnique||!isPaid(r.source)) continue;
       /* Align T-CPL denominator to the same month shown in spendsAgg */
       if(selMonth&&r.date&&!r.date.startsWith(selMonth)) continue;
       if(!m[r.brand]) m[r.brand]={total:0,models:{}};
@@ -826,7 +826,7 @@ function OverviewTable({rows, spendsRows, selMonth, onControls}){
 
   /* Total spends across all brands in current spends month */
   const totalBrandSpend=brands.reduce((s,b)=>(spendsAgg[b]?s+spendsAgg[b].total:s),0);
-  const totalUnique=rows.filter(r=>r.isUnique&&PAID_SOURCES.has(r.source)).length;
+  const totalUnique=rows.filter(r=>r.isUnique&&isPaid(r.source)).length;
 
   return ce('div',null,
     ce('div',{className:'card scroll-x fade-up'},
