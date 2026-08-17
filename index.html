@@ -244,8 +244,10 @@ function toISODate(s){
 /* ── HMSI model-based brand reclassification ─────────────────────── */
 /* Slug = only lowercase a-z 0-9, so spacing/hyphens/apostrophes don't matter */
 function slugify(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
-const HMSI_BW_SLUGS=['cb350rs','cb350','hnesscb350'];          /* CB 350 RS first — longer match wins */
+const HMSI_BW_SLUGS=['cb350rs','cb350c','cb350','hnesscb350']; /* longer/more-specific slugs first */
 const HMSI_RW_SLUGS=['activa6g','activa125','shine100dx','shine100','shine125','shine','sp125','cb125hornet'];
+/* CB350C is a variant of CB350 — fold its leads into the CB350 row */
+const MODEL_ALIAS={'cb350c':'Honda CB350','hondacb350c':'Honda CB350'};
 function reclassifyHMSI(brand,model){
   /* Match only pure Honda/HMSI brands — not "Hero Honda" or other composites */
   if(!/^(honda|hmsi)\b/i.test(brand.trim())) return brand;
@@ -256,6 +258,9 @@ function reclassifyHMSI(brand,model){
   if(HMSI_BW_SLUGS.some(m=>n===m)) return 'HMSI BW';
   return 'HMSI RW';
 }
+function normalizeModel(model){
+  return MODEL_ALIAS[slugify(model)]||model;
+}
 
 /* ── Parse raw sheet rows into structured lead records ───────────── */
 function parseRows(raw){
@@ -264,7 +269,7 @@ function parseRows(raw){
     const r=raw[i];
     const g=makeGetter(r);
     const idLead = g(['id_lead','id verified lead','id_verified_lead']);
-    const model  = g('model')||'Unknown';
+    const model  = normalizeModel(g('model')||'Unknown');
     const brand  = reclassifyHMSI(g('brand')||'Unknown',model);
     const leadType = g(['lead_type','lead type'])||'Unknown';
     const source = g(['final_source','source'])||'Unknown';
