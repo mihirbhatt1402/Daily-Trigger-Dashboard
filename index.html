@@ -1230,7 +1230,10 @@ function SpendsTab({spendsRows, rows, filters, selMonth, onControls}){
   const filteredSpends=useMemo(function(){
     const brandFiltered=spendsRows.filter(function(r){
       if(!filters.brand) return true;
-      return spendsBrandToLeads(r.brand)===filters.brand;
+      const mapped=spendsBrandToLeads(r.brand);
+      /* 'Royal Enfield IMS' leads share the same spends rows as 'Royal Enfield' */
+      const effectiveBrand=filters.brand==='Royal Enfield IMS'?'Royal Enfield':filters.brand;
+      return mapped===effectiveBrand;
     });
     if(!filters.model||!filters.model.length) return brandFiltered;
     /* Group by spends brand, apply model filter per group */
