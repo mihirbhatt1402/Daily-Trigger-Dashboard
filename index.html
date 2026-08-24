@@ -612,11 +612,13 @@ function OverviewTable({rows, spendsRows, selMonth, onControls}){
     return new Date(selMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
   },[selMonth]);
 
+  const IMS_REMARKETING=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
   const spendsAgg = useMemo(function(){
     const byBrand={};
     const monthRows=(spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth));
     for(const r of monthRows){
-      const lb=spendsBrandToLeads(r.brand);
+      const isIMS=IMS_REMARKETING.has((r.campaign||'').trim());
+      const lb=isIMS?'Royal Enfield IMS':spendsBrandToLeads(r.brand);
       if(!byBrand[lb]) byBrand[lb]={total:0,rows:[]};
       byBrand[lb].total+=r.cost;
       byBrand[lb].rows.push(r);
@@ -1498,10 +1500,12 @@ function RevenueTab({spendsRows,rows,filters,isAdmin,selMonth}){
   },[rows,filters]);
 
   /* Spends MTD per brand */
+  const IMS_REMARKETING_REV=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
   const spendsAgg=M(function(){
     const m={};
     (spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth)).forEach(function(r){
-      const lb=spendsBrandToLeads(r.brand);
+      const isIMS=IMS_REMARKETING_REV.has((r.campaign||'').trim());
+      const lb=isIMS?'Royal Enfield IMS':spendsBrandToLeads(r.brand);
       m[lb]=(m[lb]||0)+r.cost;
     });
     return m;
