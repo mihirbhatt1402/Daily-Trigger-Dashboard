@@ -270,13 +270,14 @@ function parseRows(raw){
     const g=makeGetter(r);
     const idLead = g(['id_lead','id verified lead','id_verified_lead']);
     const model  = normalizeModel(g('model')||'Unknown');
-    const brand  = reclassifyHMSI(g('brand')||'Unknown',model);
     const leadType = g(['lead_type','lead type'])||'Unknown';
     const utmCampaign = g(['utm_campaign','UTM Campaign','utm campaign','campaign'])||'';
     /* IMS campaigns (Google Ads managed by IMS agency) are reclassified to their
-       own source so they can be tracked separately from organic Adwords traffic. */
+       own source and brand so they can be tracked separately from organic Adwords traffic. */
     const rawSource = g(['final_source','source'])||'Unknown';
     const source = utmCampaign.toUpperCase().startsWith('IMS_') ? 'IMS' : rawSource;
+    const rawBrand = reclassifyHMSI(g('brand')||'Unknown',model);
+    const brand  = source==='IMS' ? 'Royal Enfield IMS' : rawBrand;
     const city   = g(['verified_city','city'])||'Unknown';
     const state  = g(['state'])||'Unknown';
     const camName = g(['cam_name','cam name'])||'Unknown';
