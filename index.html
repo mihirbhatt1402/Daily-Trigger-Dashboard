@@ -1217,7 +1217,8 @@ function parseSpends(raw){
     const brand=g(['Brand','brand']);
     const model=g(['Model','model']);
     const accountName=g(['Account name','account name','AccountName','accountname']);
-    return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model};
+    const campaign=g(['Campaign','campaign','campaigns','Campaigns'])||'';
+    return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model,campaign};
   }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
 }
 
@@ -1228,12 +1229,23 @@ function SpendsTab({spendsRows, rows, filters, selMonth, onControls}){
      (e.g. Ola whose spends are brand-level "Ola Electric"), show all
      rows for that brand rather than hiding them entirely. */
   const filteredSpends=useMemo(function(){
+    const IMS_REMARKETING_CAMPAIGNS=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
     const brandFiltered=spendsRows.filter(function(r){
-      if(!filters.brand) return true;
-      const mapped=spendsBrandToLeads(r.brand);
-      /* 'Royal Enfield IMS' leads share the same spends rows as 'Royal Enfield' */
-      const effectiveBrand=filters.brand==='Royal Enfield IMS'?'Royal Enfield':filters.brand;
-      return mapped===effectiveBrand;
+      const isIMSRemarketing=IMS_REMARKETING_CAMPAIGNS.has((r.campaign||'').trim());
+      if(!filters.brand){
+        /* When no brand filter, exclude IMS remarketing rows from the main view
+           so they don't inflate Royal Enfield totals */
+        return !isIMSRemarketing;
+      }
+      if(filters.brand==='Royal Enfield IMS'){
+        /* Only show spends rows tagged with the IMS remarketing campaigns */
+        return isIMSRemarketing;
+      }
+      if(filters.brand==='Royal Enfield'){
+        /* Exclude IMS remarketing rows so they don't inflate RE spends */
+        return spendsBrandToLeads(r.brand)===filters.brand && !isIMSRemarketing;
+      }
+      return spendsBrandToLeads(r.brand)===filters.brand;
     });
     if(!filters.model||!filters.model.length) return brandFiltered;
     /* Group by spends brand, apply model filter per group */
