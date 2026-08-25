@@ -608,11 +608,13 @@ function OverviewTable({rows, spendsRows, selMonth, onControls}){
     return new Date(selMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
   },[selMonth]);
 
+  const IMS_CAMPS=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
   const spendsAgg = useMemo(function(){
     const byBrand={};
     const monthRows=(spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth));
     for(const r of monthRows){
-      const lb=spendsBrandToLeads(r.brand);
+      /* IMS remarketing campaign rows belong to Royal Enfield IMS, not Royal Enfield */
+      const lb=IMS_CAMPS.has((r.campaign||'').trim())?'Royal Enfield IMS':spendsBrandToLeads(r.brand);
       if(!byBrand[lb]) byBrand[lb]={total:0,rows:[]};
       byBrand[lb].total+=r.cost;
       byBrand[lb].rows.push(r);
@@ -1213,7 +1215,8 @@ function parseSpends(raw){
     const brand=g(['Brand','brand']);
     const model=g(['Model','model']);
     const accountName=g(['Account name','account name','AccountName','accountname']);
-    return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model};
+    const campaign=g(['Campaign','campaign','campaigns','Campaigns'])||'';
+    return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model,campaign};
   }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
 }
 
@@ -1224,8 +1227,12 @@ function SpendsTab({spendsRows, rows, filters, selMonth, onControls}){
      (e.g. Ola whose spends are brand-level "Ola Electric"), show all
      rows for that brand rather than hiding them entirely. */
   const filteredSpends=useMemo(function(){
+    const IMS_CAMPS_TAB=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
     const brandFiltered=spendsRows.filter(function(r){
-      if(!filters.brand) return true;
+      const isIMS=IMS_CAMPS_TAB.has((r.campaign||'').trim());
+      if(!filters.brand) return !isIMS; /* exclude IMS rows from all-brand view to avoid inflating RE */
+      if(filters.brand==='Royal Enfield IMS') return isIMS;
+      if(filters.brand==='Royal Enfield') return spendsBrandToLeads(r.brand)===filters.brand && !isIMS;
       return spendsBrandToLeads(r.brand)===filters.brand;
     });
     if(!filters.model||!filters.model.length) return brandFiltered;
@@ -1479,10 +1486,11 @@ function RevenueTab({spendsRows,rows,filters,isAdmin,selMonth}){
   },[rows,filters]);
 
   /* Spends MTD per brand */
+  const IMS_CAMPS_REV=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
   const spendsAgg=M(function(){
     const m={};
     (spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth)).forEach(function(r){
-      const lb=spendsBrandToLeads(r.brand);
+      const lb=IMS_CAMPS_REV.has((r.campaign||'').trim())?'Royal Enfield IMS':spendsBrandToLeads(r.brand);
       m[lb]=(m[lb]||0)+r.cost;
     });
     return m;
