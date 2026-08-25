@@ -276,7 +276,9 @@ function parseRows(raw){
     /* IMS campaigns keep their original source but get a dedicated brand so they
        appear as a separate row in Account wise Summary. */
     const rawBrand = reclassifyHMSI(g('brand')||'Unknown',model);
-    const brand  = (rawBrand==='Royal Enfield' && utmCampaign.toUpperCase().startsWith('IMS_')) ? 'Royal Enfield IMS' : rawBrand;
+    /* Any lead with an IMS_ UTM campaign is a Royal Enfield IMS lead regardless
+       of how the brand field is spelled in the sheet. */
+    const brand  = utmCampaign.toUpperCase().startsWith('IMS_') ? 'Royal Enfield IMS' : rawBrand;
     const city   = g(['verified_city','city'])||'Unknown';
     const state  = g(['state'])||'Unknown';
     const camName = g(['cam_name','cam name'])||'Unknown';
