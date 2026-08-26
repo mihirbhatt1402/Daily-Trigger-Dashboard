@@ -589,6 +589,30 @@ function sumSourceCounts(counts){
   return Object.values(counts).reduce((s,c)=>s+c.unique+c.duplicate,0);
 }
 
+/* ── Brand day grid: one GridTable per brand, stacked vertically ─── */
+function BrandDayGrid({rows, predicate, onControls}){
+  const brands=useMemo(()=>[...new Set(rows.map(r=>r.brand).filter(Boolean))].sort(),[rows]);
+  const pivots=useMemo(()=>{
+    const m={};
+    for(const b of brands){
+      const br=rows.filter(r=>r.brand===b);
+      m[b]=pivot(br, predicate);
+    }
+    return m;
+  },[rows,brands,predicate]);
+
+  return ce('div',{style:{display:'flex',flexDirection:'column',gap:24}},
+    brands.map(function(b){
+      const p=pivots[b];
+      if(!p.dates.length) return null;
+      return ce('div',{key:b},
+        ce('div',{style:{fontWeight:700,fontSize:13,color:'var(--violet-d)',marginBottom:6,paddingLeft:4}},b),
+        ce(GridTable,{dates:p.dates, sources:p.sources, grid:p.grid, onControls:onControls})
+      );
+    })
+  );
+}
+
 /* ── Overview table: Brand × Source (each split into Unique/Duplicate
    sub-columns), brand rows expand/collapse into model rows. Same
    drag-select + copy-as-TSV behavior as GridTable. ── */
@@ -1683,8 +1707,6 @@ function App({topBar,isAdmin}){
     filtered.filter(r=>!selMonth||(r.date&&r.date.startsWith(selMonth))),
   [filtered,selMonth]);
 
-  const triggerPivot = useMemo(()=>pivot(filteredByMonth, r=>r.isUnique), [filteredByMonth]);
-  const duplicatePivot = useMemo(()=>pivot(filteredByMonth, r=>!r.isUnique), [filteredByMonth]);
 
   const totalLeads = filteredByMonth.length;
   const uniqueLeads = filteredByMonth.filter(r=>r.isUnique).length;
@@ -1731,9 +1753,9 @@ function App({topBar,isAdmin}){
       tab==='overview'?
         ce(OverviewTable,{rows:filteredByMonth, spendsRows, selMonth, onControls:setTableControls}):
       tab==='trigger'?
-        ce(GridTable,{dates:triggerPivot.dates, sources:triggerPivot.sources, grid:triggerPivot.grid, onControls:setTableControls}):
+        ce(BrandDayGrid,{rows:filteredByMonth, predicate:r=>r.isUnique, onControls:setTableControls}):
       tab==='duplicate'?
-        ce(GridTable,{dates:duplicatePivot.dates, sources:duplicatePivot.sources, grid:duplicatePivot.grid, onControls:setTableControls}):
+        ce(BrandDayGrid,{rows:filteredByMonth, predicate:r=>!r.isUnique, onControls:setTableControls}):
       tab==='spends'?
         ce(SpendsTab,{spendsRows,rows:filteredByMonth,filters,selMonth,onControls:setTableControls}):
         ce(RevenueTab,{spendsRows,rows:filteredByMonth,filters,isAdmin,selMonth})
