@@ -249,6 +249,8 @@ const HMSI_RW_SLUGS=['activa6g','activa125','shine100dx','shine100','shine125','
 /* CB350C is a variant of CB350 — fold its leads into the CB350 row */
 const MODEL_ALIAS={'cb350c':'Honda CB350','hondacb350c':'Honda CB350'};
 function reclassifyHMSI(brand,model){
+  /* AdHoc variants are pre-classified in the sheet — skip model-based segregation */
+  if(/adhoc/i.test(brand)) return brand.trim();
   /* Match only pure Honda/HMSI brands — not "Hero Honda" or other composites */
   if(!/^(honda|hmsi)\b/i.test(brand.trim())) return brand;
   /* Sheet stores model names like "Honda CB350" — strip leading brand prefix */
