@@ -1216,6 +1216,117 @@ function SummaryTab({rows,isAdmin}){
   );
 }
 
+/* ── Target Delivery Achievement Tab ────────────────────────────── */
+const TARGETS={
+  '2026-09':{
+    'Royal Enfield':    {organic:40000,paid:22500,budget:675000,  tcpl:30},
+    'Royal Enfield IMS':{organic:0,    paid:2940, budget:264600,  tcpl:90},
+    'HMSI BW':          {organic:3100, paid:6400, budget:544000,  tcpl:85},
+    'HMSI RW':          {organic:15500,paid:4500, budget:150000,  tcpl:35},
+    'HMSI RW AdHoc':    {organic:4200, paid:9434, budget:358765,  tcpl:50},
+    'Harley-Davidson':  {organic:480,  paid:520,  budget:44200,   tcpl:85},
+    'Ola Electric':     {organic:28600,paid:25040,budget:751200,  tcpl:30},
+  }
+};
+const IMS_CAMPS_TGT=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
+function TargetAchievementTab({rows,spendsRows,selMonth}){
+  const {useMemo:M}=React;
+  const tgts=TARGETS[selMonth]||null;
+  function isPaidSrc(src){const s=(src||'').trim();return s==='MS FB'||s==='Adwords'||s.toUpperCase().includes('WHATSAPP');}
+  const actuals=M(function(){
+    const m={};
+    for(const r of rows){
+      if(!r.isUnique) continue;
+      if(!m[r.brand]) m[r.brand]={organic:0,paid:0};
+      if(isPaidSrc(r.source)) m[r.brand].paid++; else m[r.brand].organic++;
+    }
+    return m;
+  },[rows]);
+  const spends=M(function(){
+    const m={};
+    for(const r of (spendsRows||[]).filter(r=>selMonth&&r.date&&r.date.startsWith(selMonth))){
+      const isIMS=IMS_CAMPS_TGT.has((r.campaign||'').trim());
+      const lb=isIMS?'Royal Enfield IMS':spendsBrandToLeads(r.brand);
+      m[lb]=(m[lb]||0)+r.cost;
+    }
+    return m;
+  },[spendsRows,selMonth]);
+
+  function pct(a,t){if(!t) return a?'—':'100%'; return Math.round(a/t*100)+'%';}
+  function fmtN(n){return n!=null&&n!==''?Nf(Math.round(n)):'—';}
+  function fmtC(n){return n?'₹'+Nf(Math.round(n)):'—';}
+  function achvtStyle(a,t){
+    if(!t) return {};
+    const r=a/t;
+    return r>=1?{color:'#16a34a',fontWeight:700}:r>=0.75?{color:'#d97706',fontWeight:600}:{color:'#dc2626',fontWeight:600};
+  }
+  const thG={style:{background:'linear-gradient(135deg,#22c55e,#15803d)'}};
+  const thP={style:{background:'linear-gradient(135deg,#818cf8,#4338ca)'}};
+  const thT={style:{background:'linear-gradient(135deg,var(--violet-d),var(--violet-900))'}};
+  const thS={style:{background:'linear-gradient(135deg,#f59e0b,#b45309)'}};
+
+  if(!tgts) return ce('div',{className:'card',style:{padding:32,textAlign:'center'}},
+    ce('span',{className:'muted'},'Targets are configured for Sep 2026. Select Sep 2026 in the month filter to view.'));
+
+  const brands=Object.keys(tgts);
+  function renderRow(b,t,a,sp){
+    const totTgt=t.organic+t.paid, totAct=a.organic+a.paid;
+    const tcplAct=a.paid?Math.round(sp/a.paid):null;
+    return ce('tr',{key:b},
+      ce('td',{className:'label',style:{fontWeight:700,minWidth:140}},b),
+      ce('td',null,fmtN(t.organic)), ce('td',null,fmtN(a.organic)),
+      ce('td',{style:achvtStyle(a.organic,t.organic)},pct(a.organic,t.organic)),
+      ce('td',null,fmtN(t.paid)), ce('td',null,fmtN(a.paid)),
+      ce('td',{style:achvtStyle(a.paid,t.paid)},pct(a.paid,t.paid)),
+      ce('td',null,'₹'+t.tcpl), ce('td',null,tcplAct?'₹'+Nf(tcplAct):'—'),
+      ce('td',null,fmtN(totTgt)), ce('td',null,fmtN(totAct)),
+      ce('td',{style:achvtStyle(totAct,totTgt)},pct(totAct,totTgt)),
+      ce('td',null,fmtC(t.budget)), ce('td',null,fmtC(sp)),
+      ce('td',{style:achvtStyle(sp,t.budget)},pct(sp,t.budget))
+    );
+  }
+  const totOrg=brands.reduce((s,b)=>s+tgts[b].organic,0);
+  const totPaid=brands.reduce((s,b)=>s+tgts[b].paid,0);
+  const totBudget=brands.reduce((s,b)=>s+tgts[b].budget,0);
+  const actOrg=brands.reduce((s,b)=>s+((actuals[b]||{}).organic||0),0);
+  const actPaid=brands.reduce((s,b)=>s+((actuals[b]||{}).paid||0),0);
+  const actSp=brands.reduce((s,b)=>s+(spends[b]||0),0);
+
+  return ce('div',{className:'card scroll-x fade-up',style:{padding:0}},
+    ce('table',null,
+      ce('thead',null,
+        ce('tr',null,
+          ce('th',{rowSpan:2,className:'left'},'Brand'),
+          ce('th',Object.assign({colSpan:3},thG),'Organic (incl. Non MS / CV / Others)'),
+          ce('th',Object.assign({colSpan:5},thP),'Paid (FB + Adwords + WhatsApp)'),
+          ce('th',Object.assign({colSpan:3},thT),'Total Unique Leads'),
+          ce('th',Object.assign({colSpan:3},thS),'Marketing Spends')
+        ),
+        ce('tr',null,
+          ce('th',null,'Target'), ce('th',null,'MTD'), ce('th',null,'Achvt%'),
+          ce('th',null,'Target'), ce('th',null,'MTD'), ce('th',null,'Achvt%'),
+          ce('th',null,'T-CPL Tgt'), ce('th',null,'T-CPL Actual'),
+          ce('th',null,'Target'), ce('th',null,'MTD'), ce('th',null,'Achvt%'),
+          ce('th',null,'Budget'), ce('th',null,'MTD Spends'), ce('th',null,'Util%')
+        )
+      ),
+      ce('tbody',null,
+        brands.map(b=>renderRow(b,tgts[b],actuals[b]||{organic:0,paid:0},spends[b]||0)),
+        ce('tr',{key:'__total',className:'total-row'},
+          ce('td',{className:'label'},'Grand Total'),
+          ce('td',null,fmtN(totOrg)), ce('td',null,fmtN(actOrg)), ce('td',{style:achvtStyle(actOrg,totOrg)},pct(actOrg,totOrg)),
+          ce('td',null,fmtN(totPaid)), ce('td',null,fmtN(actPaid)), ce('td',{style:achvtStyle(actPaid,totPaid)},pct(actPaid,totPaid)),
+          ce('td',null,'—'), ce('td',null,actPaid?'₹'+Nf(Math.round(actSp/actPaid)):'—'),
+          ce('td',null,fmtN(totOrg+totPaid)), ce('td',null,fmtN(actOrg+actPaid)),
+          ce('td',{style:achvtStyle(actOrg+actPaid,totOrg+totPaid)},pct(actOrg+actPaid,totOrg+totPaid)),
+          ce('td',null,fmtC(totBudget)), ce('td',null,fmtC(actSp)),
+          ce('td',{style:achvtStyle(actSp,totBudget)},pct(actSp,totBudget))
+        )
+      )
+    )
+  );
+}
+
 /* ── Spends brand name → leads dashboard brand name mapping ─────── */
 const SPENDS_BRAND_MAP={
   'royal enfield':'Royal Enfield',
@@ -1745,7 +1856,8 @@ function App({topBar,isAdmin}){
           ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Account wise Summary'),
           ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
           ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
-          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
+          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends'),
+          ce('button',{className:'tab-pill'+(tab==='targets'?' active':''),onClick:()=>switchTab('targets')},'Target Delivery Achievement')
         ),
         (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
           tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
@@ -1760,6 +1872,8 @@ function App({topBar,isAdmin}){
         ce(BrandDayGrid,{rows:filteredByMonth, predicate:r=>!r.isUnique, onControls:setTableControls}):
       tab==='spends'?
         ce(SpendsTab,{spendsRows,rows:filteredByMonth,filters,selMonth,onControls:setTableControls}):
+      tab==='targets'?
+        ce(TargetAchievementTab,{rows:filteredByMonth,spendsRows,selMonth}):
         ce(RevenueTab,{spendsRows,rows:filteredByMonth,filters,isAdmin,selMonth})
     ): (!syncing && !error)?ce('div',{className:'card',style:{padding:24,textAlign:'center'}},ce('span',{className:'muted'},'No data loaded yet.')):null
   );
