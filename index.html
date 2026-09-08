@@ -36,6 +36,7 @@ body{font-family:'Inter',system-ui,sans-serif;background:#FFFFFF;color:#1e1b2e;m
 .kpi-value{font-size:23px;font-weight:700;color:#1e1b2e;letter-spacing:-.03em;font-family:'DM Mono',monospace}
 .kpi-sub{font-size:11.5px;color:var(--violet-d);margin-top:2px;font-family:'DM Mono',monospace}
 .card{background:#fff;border-radius:12px;border:1px solid var(--violet-100);box-shadow:var(--shadow-card)}
+.sticky-header{position:sticky;top:0;z-index:50;background:#FFFFFF;margin:-20px -24px 14px;padding:20px 24px 0;box-shadow:0 2px 8px rgba(76,29,149,.06)}
 .tab-pill{padding:9px 20px;font-size:14px;font-weight:600;border:none;background:none;cursor:pointer;
   border-bottom:2px solid transparent;color:#7c6f9c;transition:all .12s;font-family:inherit;white-space:nowrap}
 .tab-pill.active{color:var(--violet-d);border-bottom-color:var(--violet)}
@@ -1826,42 +1827,46 @@ function App({topBar,isAdmin}){
   const duplicateLeads = totalLeads-uniqueLeads;
 
   return ce('div',{style:{maxWidth:'100%',margin:'0 auto',padding:'20px 24px'}},
-    topBar,
-    ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}},
-      ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
-        ce('img',{src:'logo.png',alt:'BikeDekho',style:{height:48,width:'auto'}}),
-        ce('h1',{style:{fontSize:19,fontWeight:700,backgroundImage:'linear-gradient(135deg,var(--violet-d),var(--pink))',
-          WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}},'Bikes | Enterprise | Daily Trigger Dashboard')
-      ),
-      ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
-        lastSynced?ce('span',{className:'muted'},'Last synced: '+lastSynced):null,
-        ce('button',{className:'btn btn-primary',onClick:sync,disabled:syncing},
-          syncing?ce('span',{className:'spinner'}):'Refresh now')
-      )
-    ),
-    error?ce('div',{className:'err-box'},error):null,
-    rows.length?ce(React.Fragment,null,
-      ce('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}},
-        ce('div',{className:'kpi c-violet'},ce('div',{className:'kpi-label'},'Total Leads'),ce('div',{className:'kpi-value'},Nf(totalLeads))),
-        ce('div',{className:'kpi c-mint'},ce('div',{className:'kpi-label'},'Unique Leads'),ce('div',{className:'kpi-value'},Nf(uniqueLeads))),
-        ce('div',{className:'kpi c-pink'},ce('div',{className:'kpi-label'},'Duplicate Leads'),ce('div',{className:'kpi-value'},Nf(duplicateLeads))),
-        ce('div',{className:'kpi c-peach'},ce('div',{className:'kpi-label'},'Duplicate %'),ce('div',{className:'kpi-value'},Pf(totalLeads?duplicateLeads/totalLeads*100:0)))
-      ),
-      ce(FilterBar,{rows, filters, setFilters, selMonth, setSelMonth, availableMonths}),
-      ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,
-        borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8}},
-        ce('div',{style:{display:'flex',gap:4}},
-          ce('button',{className:'tab-pill'+(tab==='targets'?' active':''),onClick:()=>switchTab('targets')},'Target Delivery Achievement'),
-          ce('button',{className:'tab-pill'+(tab==='revenue'?' active':''),onClick:()=>switchTab('revenue')},'Margin Tracking'),
-          ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Daily Run Rate'),
-          ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Account wise Summary'),
-          ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
-          ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
-          ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
+    ce('div',{className:'sticky-header'},
+      topBar,
+      ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16,flexWrap:'wrap',gap:10}},
+        ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          ce('img',{src:'logo.png',alt:'BikeDekho',style:{height:48,width:'auto'}}),
+          ce('h1',{style:{fontSize:19,fontWeight:700,backgroundImage:'linear-gradient(135deg,var(--violet-d),var(--pink))',
+            WebkitBackgroundClip:'text',backgroundClip:'text',color:'transparent'}},'Bikes | Enterprise | Daily Trigger Dashboard')
         ),
-        (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
-          tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
+        ce('div',{style:{display:'flex',alignItems:'center',gap:10}},
+          lastSynced?ce('span',{className:'muted'},'Last synced: '+lastSynced):null,
+          ce('button',{className:'btn btn-primary',onClick:sync,disabled:syncing},
+            syncing?ce('span',{className:'spinner'}):'Refresh now')
+        )
       ),
+      error?ce('div',{className:'err-box'},error):null,
+      rows.length?ce(React.Fragment,null,
+        ce('div',{style:{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:16}},
+          ce('div',{className:'kpi c-violet'},ce('div',{className:'kpi-label'},'Total Leads'),ce('div',{className:'kpi-value'},Nf(totalLeads))),
+          ce('div',{className:'kpi c-mint'},ce('div',{className:'kpi-label'},'Unique Leads'),ce('div',{className:'kpi-value'},Nf(uniqueLeads))),
+          ce('div',{className:'kpi c-pink'},ce('div',{className:'kpi-label'},'Duplicate Leads'),ce('div',{className:'kpi-value'},Nf(duplicateLeads))),
+          ce('div',{className:'kpi c-peach'},ce('div',{className:'kpi-label'},'Duplicate %'),ce('div',{className:'kpi-value'},Pf(totalLeads?duplicateLeads/totalLeads*100:0)))
+        ),
+        ce(FilterBar,{rows, filters, setFilters, selMonth, setSelMonth, availableMonths}),
+        ce('div',{style:{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:0,
+          borderBottom:'1px solid #DBEAFE',flexWrap:'wrap',gap:8,paddingBottom:2}},
+          ce('div',{style:{display:'flex',gap:4}},
+            ce('button',{className:'tab-pill'+(tab==='targets'?' active':''),onClick:()=>switchTab('targets')},'Target Delivery Achievement'),
+            ce('button',{className:'tab-pill'+(tab==='revenue'?' active':''),onClick:()=>switchTab('revenue')},'Margin Tracking'),
+            ce('button',{className:'tab-pill'+(tab==='summary'?' active':''),onClick:()=>switchTab('summary')},'Daily Run Rate'),
+            ce('button',{className:'tab-pill'+(tab==='overview'?' active':''),onClick:()=>switchTab('overview')},'Account wise Summary'),
+            ce('button',{className:'tab-pill'+(tab==='trigger'?' active':''),onClick:()=>switchTab('trigger')},'Day-wise Source-wise Trigger'),
+            ce('button',{className:'tab-pill'+(tab==='duplicate'?' active':''),onClick:()=>switchTab('duplicate')},'Day-wise Source-wise Duplicate'),
+            ce('button',{className:'tab-pill'+(tab==='spends'?' active':''),onClick:()=>switchTab('spends')},'Day-wise Spends')
+          ),
+          (tab!=='summary'&&tableControls)?ce('button',{className:'btn',style:{marginBottom:8},onClick:tableControls.doCopy},
+            tableControls.copied?'Copied ✓':(tableControls.sel?'Copy selection':'Copy whole grid')):null
+        )
+      ):null
+    ),
+    rows.length?(
       tab==='summary'?
         ce(SummaryTab,{rows:filteredByMonth,isAdmin}):
       tab==='overview'?
