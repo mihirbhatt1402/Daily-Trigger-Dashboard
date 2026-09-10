@@ -635,7 +635,7 @@ function OverviewTable({rows, spendsRows, selMonth, onControls}){
     return new Date(selMonth+'-01').toLocaleString('en-IN',{month:'short',year:'numeric'});
   },[selMonth]);
 
-  const IMS_CAMPS=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
+  const IMS_CAMPS=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India','IMS_RE-Remaketing-P1','IMS_RE-Remarketing-P2']);
   const spendsAgg = useMemo(function(){
     const byBrand={};
     const monthRows=(spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth));
@@ -1229,7 +1229,7 @@ const TARGETS={
     'Ola Electric':     {organic:26000,paid:7000, budget:210000,  tcpl:30},
   }
 };
-const IMS_CAMPS_TGT=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
+const IMS_CAMPS_TGT=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India','IMS_RE-Remaketing-P1','IMS_RE-Remarketing-P2']);
 function TargetAchievementTab({rows,spendsRows,selMonth}){
   const {useMemo:M}=React;
   const tgts=TARGETS[selMonth]||null;
@@ -1365,7 +1365,7 @@ function SpendsTab({spendsRows, rows, filters, selMonth, onControls}){
      (e.g. Ola whose spends are brand-level "Ola Electric"), show all
      rows for that brand rather than hiding them entirely. */
   const filteredSpends=useMemo(function(){
-    const IMS_CAMPS_TAB=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
+    const IMS_CAMPS_TAB=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India','IMS_RE-Remaketing-P1','IMS_RE-Remarketing-P2']);
     const brandFiltered=spendsRows.filter(function(r){
       const isIMS=IMS_CAMPS_TAB.has((r.campaign||'').trim());
       if(!filters.brand) return !isIMS; /* exclude IMS rows from all-brand view to avoid inflating RE */
@@ -1624,7 +1624,7 @@ function RevenueTab({spendsRows,rows,filters,isAdmin,selMonth}){
   },[rows,filters]);
 
   /* Spends MTD per brand */
-  const IMS_CAMPS_REV=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India']);
+  const IMS_CAMPS_REV=new Set(['IMS_RE-Remaketing-Aug-26','IMS_RE-Remaketing-Aug-26_Pan_India','IMS_RE-Remaketing-P1','IMS_RE-Remarketing-P2']);
   const spendsAgg=M(function(){
     const m={};
     (spendsRows||[]).filter(r=>selMonth&&r.date.startsWith(selMonth)).forEach(function(r){
