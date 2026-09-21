@@ -1335,6 +1335,7 @@ const SPENDS_BRAND_MAP={
   'hmsi bigwing':'HMSI BW',
   'hmsi redwing':'HMSI RW',
   'harley':'Harley-Davidson',
+  'kinetic':'Kinetic',
 };
 function spendsBrandToLeads(b){
   return SPENDS_BRAND_MAP[String(b||'').toLowerCase().trim()]||b;
@@ -1355,7 +1356,12 @@ function parseSpends(raw){
     const accountName=g(['Account name','account name','AccountName','accountname']);
     const campaign=g(['Campaign','campaign','campaigns','Campaigns'])||'';
     return {segment,buType,accountName,date:toISODate(day),cost,leads,month:monthRaw,brand,model,campaign};
-  }).filter(function(r){ return r.segment.toLowerCase().trim()==='bikes' && r.date; });
+  }).filter(function(r){
+    if(!r.date) return false;
+    if(r.segment.toLowerCase().trim()==='bikes') return true;
+    /* Allow rows whose brand is a known bikes brand even if segment is mis-tagged (e.g. Kinetic tagged "Car") */
+    return SPENDS_BRAND_MAP.hasOwnProperty(String(r.brand||'').toLowerCase().trim());
+  });
 }
 
 /* ── Spends Tab ──────────────────────────────────────────────────── */
